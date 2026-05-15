@@ -26,44 +26,56 @@ import {
 import {
   listResellers, deactivateReseller,
 } from '../controllers/admin.reseller.controller'
+import {
+  listSubAdmins, createSubAdmin, toggleSubAdmin,
+} from '../controllers/admin.subadmin.controller'
 
 const router = Router()
 
-// Todos los endpoints de admin requieren autenticación + rol ADMIN
-router.use(authenticate, authorize('ADMIN'))
+// Autenticación requerida en todos los endpoints admin
+router.use(authenticate)
+
+// Shorthands de autorización
+const adminOnly      = authorize('ADMIN')
+const adminOrSub     = authorize('ADMIN', 'SUBADMIN')
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-router.get('/dashboard', asyncHandler(getDashboardStats))
+router.get('/dashboard', adminOnly, asyncHandler(getDashboardStats))
 
-// ── Productos ─────────────────────────────────────────────────────────────────
-router.get('/products',                  asyncHandler(listProductsHandler))
-router.post('/products',                 upload.array('photos', 10), asyncHandler(createProductHandler))
-router.patch('/products/:id',            upload.array('photos', 10), asyncHandler(updateProductHandler))
-router.delete('/products/:id',           asyncHandler(deleteProductHandler))
-router.get('/products/:id/catalogs',     asyncHandler(getProductCatalogsHandler))
+// ── Productos (ADMIN y SUBADMIN) ──────────────────────────────────────────────
+router.get('/products',              adminOrSub, asyncHandler(listProductsHandler))
+router.post('/products',             adminOrSub, upload.array('photos', 10), asyncHandler(createProductHandler))
+router.patch('/products/:id',        adminOrSub, upload.array('photos', 10), asyncHandler(updateProductHandler))
+router.delete('/products/:id',       adminOrSub, asyncHandler(deleteProductHandler))
+router.get('/products/:id/catalogs', adminOrSub, asyncHandler(getProductCatalogsHandler))
 
-// ── Categorías ────────────────────────────────────────────────────────────────
-router.get('/categories',                asyncHandler(listCategoriesHandler))
-router.post('/categories',               asyncHandler(createCategoryHandler))
-router.patch('/categories/:id',          asyncHandler(updateCategoryHandler))
+// ── Categorías (ADMIN y SUBADMIN) ─────────────────────────────────────────────
+router.get('/categories',        adminOrSub, asyncHandler(listCategoriesHandler))
+router.post('/categories',       adminOrSub, asyncHandler(createCategoryHandler))
+router.patch('/categories/:id',  adminOrSub, asyncHandler(updateCategoryHandler))
 
-// ── Configuración ─────────────────────────────────────────────────────────────
-router.get('/config',                    asyncHandler(getConfig))
-router.patch('/config',                  asyncHandler(updateConfig))
+// ── Configuración (solo ADMIN) ────────────────────────────────────────────────
+router.get('/config',  adminOnly, asyncHandler(getConfig))
+router.patch('/config', adminOnly, asyncHandler(updateConfig))
 
-// ── Pedidos ───────────────────────────────────────────────────────────────────
-router.get('/orders',                      getOrders)
-router.get('/orders/:id',                  getOrderById)
-router.patch('/orders/:id/confirm',        confirmOrderPayment)
-router.patch('/orders/:id/dispatch',       dispatchOrderAction)
-router.patch('/orders/:id/cancel',         cancelOrderAction)
+// ── Pedidos (solo ADMIN) ──────────────────────────────────────────────────────
+router.get('/orders',                    adminOnly, getOrders)
+router.get('/orders/:id',                adminOnly, getOrderById)
+router.patch('/orders/:id/confirm',      adminOnly, confirmOrderPayment)
+router.patch('/orders/:id/dispatch',     adminOnly, dispatchOrderAction)
+router.patch('/orders/:id/cancel',       adminOnly, cancelOrderAction)
 
-// ── Comisiones ────────────────────────────────────────────────────────────────
-router.get('/commissions',                 listCommissions)
-router.patch('/commissions/:id/mark-paid', markCommissionPaid)
+// ── Comisiones (solo ADMIN) ───────────────────────────────────────────────────
+router.get('/commissions',                 adminOnly, listCommissions)
+router.patch('/commissions/:id/mark-paid', adminOnly, markCommissionPaid)
 
-// ── Revendedores ──────────────────────────────────────────────────────────────
-router.get('/resellers',                   listResellers)
-router.patch('/resellers/:id/toggle',      deactivateReseller)
+// ── Revendedores (solo ADMIN) ─────────────────────────────────────────────────
+router.get('/resellers',              adminOnly, listResellers)
+router.patch('/resellers/:id/toggle', adminOnly, deactivateReseller)
+
+// ── Subadmins (solo ADMIN) ────────────────────────────────────────────────────
+router.get('/subadmins',               adminOnly, listSubAdmins)
+router.post('/subadmins',              adminOnly, createSubAdmin)
+router.patch('/subadmins/:id/toggle',  adminOnly, toggleSubAdmin)
 
 export default router

@@ -78,11 +78,13 @@ export async function adminLogin(req: Request, res: Response): Promise<void> {
   const valid = await verifyPassword(password, admin.passwordHash)
   if (!valid) { unauthorized(res, 'Credenciales inválidas'); return }
 
-  const accessToken = signAccessToken({ sub: admin.id, email: admin.email, role: 'ADMIN' })
+  if (!admin.isActive) { forbidden(res, 'Tu cuenta fue desactivada. Contactá al administrador.'); return }
+
+  const accessToken = signAccessToken({ sub: admin.id, email: admin.email, role: admin.role })
 
   ok(res, {
     accessToken,
-    user: { id: admin.id, email: admin.email, name: admin.name, role: 'ADMIN' },
+    user: { id: admin.id, email: admin.email, name: admin.name, role: admin.role },
   })
 }
 
@@ -195,10 +197,10 @@ export async function logout(req: Request, res: Response): Promise<void> {
 export async function getMe(req: Request, res: Response): Promise<void> {
   const { sub, role } = req.user!
 
-  if (role === 'ADMIN') {
+  if (role === 'ADMIN' || role === 'SUBADMIN') {
     const admin = await prisma.admin.findUnique({ where: { id: sub } })
     if (!admin) { notFound(res, 'Admin no encontrado'); return }
-    ok(res, { id: admin.id, email: admin.email, name: admin.name, role: 'ADMIN' })
+    ok(res, { id: admin.id, email: admin.email, name: admin.name, role: admin.role })
     return
   }
 

@@ -12,13 +12,28 @@ function Spinner() {
 }
 
 /**
- * Protege rutas que requieren estar autenticado como ADMIN.
+ * Protege rutas accesibles por ADMIN o SUBADMIN.
  */
 export function AdminRoute({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuthStore()
 
   if (isLoading) return <Spinner />
   if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'ADMIN' && user.role !== 'SUBADMIN') return <Navigate to="/" replace />
+
+  return <>{children}</>
+}
+
+/**
+ * Protege rutas exclusivas del rol ADMIN (no SUBADMIN).
+ * Redirige al /admin si el usuario es SUBADMIN.
+ */
+export function AdminOnlyRoute({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useAuthStore()
+
+  if (isLoading) return <Spinner />
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role === 'SUBADMIN') return <Navigate to="/admin/productos" replace />
   if (user.role !== 'ADMIN') return <Navigate to="/" replace />
 
   return <>{children}</>

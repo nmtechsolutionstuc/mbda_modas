@@ -9,9 +9,9 @@ import { forbidden } from '../utils/apiResponse'
  * router.get('/admin/products', authenticate, authorize('ADMIN'), handler)
  * router.get('/reseller/catalog', authenticate, authorize('RESELLER'), handler)
  */
-export function authorize(...roles: ('ADMIN' | 'RESELLER')[]) {
+export function authorize(...roles: ('ADMIN' | 'SUBADMIN' | 'RESELLER')[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user || !roles.includes(req.user.role as 'ADMIN' | 'RESELLER')) {
+    if (!req.user || !roles.includes(req.user.role as 'ADMIN' | 'SUBADMIN' | 'RESELLER')) {
       forbidden(res)
       return
     }

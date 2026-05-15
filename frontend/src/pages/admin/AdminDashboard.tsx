@@ -2,24 +2,30 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { getDashboardStats, type DashboardStats } from '../../api/admin'
+import { isAdminLike } from '../../types'
 
-interface MenuItem { title: string; desc: string; icon: string; href: string; active: boolean; phase?: string }
+interface MenuItem { title: string; desc: string; icon: string; href: string; active: boolean; adminOnly?: boolean; phase?: string }
+
 const MENU: MenuItem[] = [
   { title: 'Productos', desc: 'Creá y gestioná el catálogo de MBDA', icon: '👗', href: '/admin/productos', active: true },
-  { title: 'Configuración', desc: 'CBU, alias, WhatsApp, pedidos', icon: '⚙️', href: '/admin/configuracion', active: true },
-  { title: 'Landing Page', desc: 'Editá el contenido de la página de inicio', icon: '🖋️', href: '/admin/landing', active: true },
-  { title: 'Pedidos', desc: 'Confirmá pagos y despachá pedidos', icon: '📦', href: '/admin/pedidos', active: true },
-  { title: 'Revendedores', desc: 'Gestioná cuentas de revendedores', icon: '👥', href: '/admin/revendedores', active: true },
+  { title: 'Configuración', desc: 'CBU, alias, WhatsApp, pedidos', icon: '⚙️', href: '/admin/configuracion', active: true, adminOnly: true },
+  { title: 'Landing Page', desc: 'Editá el contenido de la página de inicio', icon: '🖋️', href: '/admin/landing', active: true, adminOnly: true },
+  { title: 'Pedidos', desc: 'Confirmá pagos y despachá pedidos', icon: '📦', href: '/admin/pedidos', active: true, adminOnly: true },
+  { title: 'Revendedores', desc: 'Gestioná cuentas de revendedores', icon: '👥', href: '/admin/revendedores', active: true, adminOnly: true },
+  { title: 'Subadmins', desc: 'Gestioná usuarios con acceso a productos', icon: '🔑', href: '/admin/subadmins', active: true, adminOnly: true },
 ]
 
 export function AdminDashboard() {
   const { user } = useAuthStore()
-  const name = user?.role === 'ADMIN' ? user.name : 'Admin'
+  const isSubAdmin = user?.role === 'SUBADMIN'
+  const name = user && isAdminLike(user) ? user.name : 'Admin'
   const [stats, setStats] = useState<DashboardStats | null>(null)
 
   useEffect(() => {
-    getDashboardStats().then(setStats).catch(() => null)
-  }, [])
+    if (!isSubAdmin) {
+      getDashboardStats().then(setStats).catch(() => null)
+    }
+  }, [isSubAdmin])
 
   return (
     <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
@@ -50,9 +56,20 @@ export function AdminDashboard() {
           </div>
         )}
 
+        {/* Badge de rol */}
+        {isSubAdmin && (
+          <div style={{ marginBottom: '1.5rem', padding: '0.875rem 1.25rem', background: '#fff', borderRadius: '0.75rem', border: '1px solid #e0dbd0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontSize: '1.25rem' }}>🔑</span>
+            <div>
+              <p style={{ fontWeight: 600, color: '#111', fontSize: '0.9rem' }}>Acceso de Subadmin</p>
+              <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>Podés gestionar productos y categorías del catálogo.</p>
+            </div>
+          </div>
+        )}
+
         {/* Módulos */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-          {MENU.map(item => (
+          {MENU.filter(item => !isSubAdmin || !item.adminOnly).map(item => (
             item.active
               ? (
                 <Link

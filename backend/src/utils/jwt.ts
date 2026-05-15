@@ -4,7 +4,7 @@ import { env } from '../config/env'
 export interface AccessTokenPayload {
   sub: string    // userId (Admin.id o Reseller.id)
   email: string
-  role: 'ADMIN' | 'RESELLER'
+  role: 'ADMIN' | 'SUBADMIN' | 'RESELLER'
 }
 
 export interface RefreshTokenPayload {

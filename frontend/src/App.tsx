@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
 import { ProtectedRoute } from './routes/ProtectedRoute'
-import { AdminRoute } from './routes/AdminRoute'
+import { AdminRoute, AdminOnlyRoute } from './routes/AdminRoute'
 import { Navbar } from './components/layout/Navbar'
 import { Footer } from './components/layout/Footer'
 import { LandingPage } from './pages/public/LandingPage'
@@ -20,6 +20,7 @@ import { AdminConfigPage } from './pages/admin/AdminConfigPage'
 import { AdminLandingPage } from './pages/admin/AdminLandingPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminResellersPage } from './pages/admin/AdminResellersPage'
+import { AdminSubAdminsPage } from './pages/admin/AdminSubAdminsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 function App() {
@@ -44,13 +45,16 @@ function App() {
                 <Route path="/panel/ventas"      element={<ProtectedRoute><MySalesPage /></ProtectedRoute>} />
                 <Route path="/panel/comisiones"  element={<ProtectedRoute><MyCommissionsPage /></ProtectedRoute>} />
 
-                {/* Admin */}
-                <Route path="/admin"                element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-                <Route path="/admin/productos"      element={<AdminRoute><AdminProductsPage /></AdminRoute>} />
-                <Route path="/admin/configuracion"  element={<AdminRoute><AdminConfigPage /></AdminRoute>} />
-                <Route path="/admin/landing"        element={<AdminRoute><AdminLandingPage /></AdminRoute>} />
-                <Route path="/admin/pedidos"        element={<AdminRoute><AdminOrdersPage /></AdminRoute>} />
-                <Route path="/admin/revendedores"   element={<AdminRoute><AdminResellersPage /></AdminRoute>} />
+                {/* Admin — accesibles por ADMIN y SUBADMIN */}
+                <Route path="/admin"               element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                <Route path="/admin/productos"     element={<AdminRoute><AdminProductsPage /></AdminRoute>} />
+
+                {/* Admin — solo ADMIN */}
+                <Route path="/admin/configuracion" element={<AdminOnlyRoute><AdminConfigPage /></AdminOnlyRoute>} />
+                <Route path="/admin/landing"       element={<AdminOnlyRoute><AdminLandingPage /></AdminOnlyRoute>} />
+                <Route path="/admin/pedidos"       element={<AdminOnlyRoute><AdminOrdersPage /></AdminOnlyRoute>} />
+                <Route path="/admin/revendedores"  element={<AdminOnlyRoute><AdminResellersPage /></AdminOnlyRoute>} />
+                <Route path="/admin/subadmins"     element={<AdminOnlyRoute><AdminSubAdminsPage /></AdminOnlyRoute>} />
 
                 {/* 404 */}
                 <Route path="*" element={<NotFoundPage />} />

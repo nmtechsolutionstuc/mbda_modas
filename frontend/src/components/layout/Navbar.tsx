@@ -91,11 +91,16 @@ export function Navbar() {
           </>
         )}
 
-        {user && user.role === 'ADMIN' && (
+        {user && (user.role === 'ADMIN' || user.role === 'SUBADMIN') && (
           <>
             <Link to="/admin" style={linkStyle}>
-              Admin
+              {user.role === 'SUBADMIN' ? 'Productos' : 'Admin'}
             </Link>
+            {user.role === 'SUBADMIN' && (
+              <span style={{ fontSize: '0.75rem', background: '#f5f3ef', color: '#b8922a', padding: '0.2rem 0.5rem', borderRadius: '99px', border: '1px solid #e8e3d5', fontWeight: 600 }}>
+                Subadmin
+              </span>
+            )}
             <button onClick={handleLogout} style={{ ...linkStyle, background: 'none', border: 'none', cursor: 'pointer' }}>
               Salir
             </button>

@@ -3,7 +3,7 @@ declare namespace Express {
     user?: {
       sub: string
       email: string
-      role: string
+      role: 'ADMIN' | 'SUBADMIN' | 'RESELLER'
     }
   }
 }

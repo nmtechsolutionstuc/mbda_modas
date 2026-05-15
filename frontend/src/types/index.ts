@@ -7,6 +7,13 @@ export interface AdminUser {
   role: 'ADMIN'
 }
 
+export interface SubAdminUser {
+  id: string
+  email: string
+  name: string
+  role: 'SUBADMIN'
+}
+
 export interface ResellerUser {
   id: string
   email: string
@@ -22,12 +29,21 @@ export interface ResellerUser {
   role: 'RESELLER'
 }
 
-export type User = AdminUser | ResellerUser
+export type User = AdminUser | SubAdminUser | ResellerUser
 
 // ── Type guards ───────────────────────────────────────────────────────────────
 
 export function isAdmin(user: User): user is AdminUser {
   return user.role === 'ADMIN'
+}
+
+export function isSubAdmin(user: User): user is SubAdminUser {
+  return user.role === 'SUBADMIN'
+}
+
+/** Verdadero tanto para ADMIN como para SUBADMIN */
+export function isAdminLike(user: User): user is AdminUser | SubAdminUser {
+  return user.role === 'ADMIN' || user.role === 'SUBADMIN'
 }
 
 export function isReseller(user: User): user is ResellerUser {

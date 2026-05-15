@@ -37,17 +37,24 @@ enum CommissionStatus {
   PAID
 }
 
+enum AdminRole {
+  ADMIN
+  SUBADMIN
+}
+
 // ─────────────────────────────────────────────────────────────
 // ADMIN — Gestiona productos, pedidos y configuración
 // ─────────────────────────────────────────────────────────────
 
 model Admin {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
   passwordHash String
   name         String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  role         AdminRole @default(ADMIN)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@map("admins")
 }
