@@ -50,9 +50,18 @@ app.use(
   }),
 )
 
+// ── Rate limiters globales ────────────────────────────────────────────────────
+import { authLimiter, generalApiLimiter, publicOrderLimiter, publicCatalogLimiter } from './middlewares/rateLimiter'
+
+app.use('/api/v1/auth', authLimiter)
+app.use('/api/v1/public/orders', publicOrderLimiter)
+app.use('/api/v1/public/catalog', publicCatalogLimiter)
+app.use('/api/v1', generalApiLimiter)
+
 // ── Parsers ───────────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '4mb' }))
-app.use(express.urlencoded({ extended: true, limit: '4mb' }))
+// JSON limitado a 512 KB para rutas normales (las de upload usan multipart/form-data)
+app.use(express.json({ limit: '512kb' }))
+app.use(express.urlencoded({ extended: true, limit: '512kb' }))
 app.use(cookieParser())
 app.use(compression())
 

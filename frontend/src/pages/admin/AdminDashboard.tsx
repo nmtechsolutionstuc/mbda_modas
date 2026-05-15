@@ -43,12 +43,14 @@ export function AdminDashboard() {
         {stats && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
             {[
-              { label: 'Productos activos', value: stats.activeProducts, sub: `${stats.totalProducts} total` },
-              { label: 'Categorías', value: stats.totalCategories, sub: 'activas' },
-              { label: 'Revendedores', value: stats.activeResellers, sub: `${stats.totalResellers} registrados` },
+              { label: 'Productos activos', value: stats.activeProducts, sub: `${stats.totalProducts} total`, highlight: false },
+              { label: 'Categorías', value: stats.totalCategories, sub: 'activas', highlight: false },
+              { label: 'Revendedores activos', value: stats.activeResellers, sub: `${stats.totalResellers} registrados`, highlight: false },
+              { label: 'Pedidos pendientes', value: stats.pendingOrders, sub: 'esperan confirmación', highlight: stats.pendingOrders > 0 },
+              { label: 'Comisiones pendientes', value: `$${Number(stats.pendingCommissionsAmount).toLocaleString('es-AR', { minimumFractionDigits: 0 })}`, sub: 'por pagar a revendedores', highlight: false },
             ].map(s => (
-              <div key={s.label} style={{ background: '#fff', borderRadius: '1rem', padding: '1.25rem', border: '1px solid #e0dbd0' }}>
-                <p style={{ fontSize: '1.875rem', fontWeight: 700, color: '#b8922a', lineHeight: 1 }}>{s.value}</p>
+              <div key={s.label} style={{ background: '#fff', borderRadius: '1rem', padding: '1.25rem', border: `1px solid ${s.highlight ? '#fcd34d' : '#e0dbd0'}`, background: s.highlight ? '#fffbeb' : '#fff' as unknown as string }}>
+                <p style={{ fontSize: typeof s.value === 'number' ? '1.875rem' : '1.375rem', fontWeight: 700, color: s.highlight ? '#d97706' : '#b8922a', lineHeight: 1 }}>{s.value}</p>
                 <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#111', marginTop: '0.25rem' }}>{s.label}</p>
                 <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>{s.sub}</p>
               </div>

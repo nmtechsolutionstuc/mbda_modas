@@ -6,6 +6,44 @@ import { verifyPassword, hashPassword, generateReferralCode, createResellerToken
 import { signAccessToken, verifyRefreshToken } from '../utils/jwt'
 import { ok, created, unauthorized, forbidden, notFound, conflict } from '../utils/apiResponse'
 
+// ── Protección brute-force (in-memory) ───────────────────────────────────────
+// Registra intentos fallidos por email. Se limpia al reiniciar el servidor.
+// Para producción con múltiples instancias, migrar a Redis.
+
+interface AttemptRecord { count: number; firstAt: number; lockedUntil?: number }
+const loginAttempts = new Map<string, AttemptRecord>()
+
+const MAX_ATTEMPTS  = 5
+const WINDOW_MS     = 15 * 60 * 1000   // ventana de 15 min
+const LOCK_MS       = 30 * 60 * 1000   // bloqueo de 30 min
+
+function recordFailedAttempt(email: string): void {
+  const now   = Date.now()
+  const entry = loginAttempts.get(email)
+  if (!entry || now - entry.firstAt > WINDOW_MS) {
+    loginAttempts.set(email, { count: 1, firstAt: now })
+  } else {
+    entry.count += 1
+    if (entry.count >= MAX_ATTEMPTS) {
+      entry.lockedUntil = now + LOCK_MS
+    }
+  }
+}
+
+function checkLocked(email: string): boolean {
+  const entry = loginAttempts.get(email)
+  if (!entry?.lockedUntil) return false
+  if (Date.now() > entry.lockedUntil) {
+    loginAttempts.delete(email)
+    return false
+  }
+  return true
+}
+
+function clearAttempts(email: string): void {
+  loginAttempts.delete(email)
+}
+
 // ── Constantes de cookie ──────────────────────────────────────────────────────
 
 const REFRESH_COOKIE = 'refresh_token'
@@ -72,14 +110,23 @@ const ResellerRegisterSchema = z.object({
 export async function adminLogin(req: Request, res: Response): Promise<void> {
   const { email, password } = AdminLoginSchema.parse(req.body)
 
+  if (checkLocked(email)) {
+    res.status(429).json({
+      success: false,
+      error: { code: 'ACCOUNT_LOCKED', message: 'Demasiados intentos fallidos. Esperá 30 minutos e intentá de nuevo.' },
+    })
+    return
+  }
+
   const admin = await prisma.admin.findUnique({ where: { email } })
-  if (!admin) { unauthorized(res, 'Credenciales inválidas'); return }
+  if (!admin) { recordFailedAttempt(email); unauthorized(res, 'Credenciales inválidas'); return }
 
   const valid = await verifyPassword(password, admin.passwordHash)
-  if (!valid) { unauthorized(res, 'Credenciales inválidas'); return }
+  if (!valid) { recordFailedAttempt(email); unauthorized(res, 'Credenciales inválidas'); return }
 
   if (!admin.isActive) { forbidden(res, 'Tu cuenta fue desactivada. Contactá al administrador.'); return }
 
+  clearAttempts(email)
   const accessToken = signAccessToken({ sub: admin.id, email: admin.email, role: admin.role })
 
   ok(res, {
@@ -126,13 +173,22 @@ export async function resellerRegister(req: Request, res: Response): Promise<voi
 export async function resellerLogin(req: Request, res: Response): Promise<void> {
   const { email, password } = ResellerLoginSchema.parse(req.body)
 
+  if (checkLocked(email)) {
+    res.status(429).json({
+      success: false,
+      error: { code: 'ACCOUNT_LOCKED', message: 'Demasiados intentos fallidos. Esperá 30 minutos e intentá de nuevo.' },
+    })
+    return
+  }
+
   const reseller = await prisma.reseller.findUnique({ where: { email } })
-  if (!reseller) { unauthorized(res, 'Credenciales inválidas'); return }
+  if (!reseller) { recordFailedAttempt(email); unauthorized(res, 'Credenciales inválidas'); return }
   if (!reseller.isActive) { forbidden(res, 'Tu cuenta fue desactivada. Contactá al administrador.'); return }
 
   const valid = await verifyPassword(password, reseller.passwordHash)
-  if (!valid) { unauthorized(res, 'Credenciales inválidas'); return }
+  if (!valid) { recordFailedAttempt(email); unauthorized(res, 'Credenciales inválidas'); return }
 
+  clearAttempts(email)
   const { accessToken, refreshToken } = await createResellerTokens(reseller.id, reseller.email)
   setRefreshCookie(res, refreshToken)
 

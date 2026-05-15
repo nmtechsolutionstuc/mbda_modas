@@ -16,6 +16,7 @@ import {
 import {
   getConfig,
   updateConfig,
+  getConfigAudit,
   getDashboardStats,
 } from '../controllers/admin.config.controller'
 import {
@@ -55,8 +56,9 @@ router.post('/categories',       adminOrSub, asyncHandler(createCategoryHandler)
 router.patch('/categories/:id',  adminOrSub, asyncHandler(updateCategoryHandler))
 
 // ── Configuración (solo ADMIN) ────────────────────────────────────────────────
-router.get('/config',  adminOnly, asyncHandler(getConfig))
-router.patch('/config', adminOnly, asyncHandler(updateConfig))
+router.get('/config',        adminOnly, asyncHandler(getConfig))
+router.patch('/config',      adminOnly, asyncHandler(updateConfig))
+router.get('/config/audit',  adminOnly, asyncHandler(getConfigAudit))
 
 // ── Pedidos (solo ADMIN) ──────────────────────────────────────────────────────
 router.get('/orders',                    adminOnly, getOrders)

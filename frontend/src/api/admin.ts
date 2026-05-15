@@ -41,6 +41,26 @@ export interface DashboardStats {
   totalCategories: number
   totalResellers: number
   activeResellers: number
+  pendingOrders: number
+  pendingCommissionsAmount: number
+}
+
+export interface ConfigAuditEntry {
+  id: string
+  adminId: string
+  adminName: string
+  field: 'cbu' | 'alias' | 'whatsapp'
+  oldValue: string
+  newValue: string
+  ip: string | null
+  createdAt: string
+}
+
+export interface ConfigAuditResponse {
+  logs: ConfigAuditEntry[]
+  total: number
+  limit: number
+  offset: number
 }
 
 export interface Config {
@@ -145,8 +165,17 @@ export async function getConfig(): Promise<Config> {
   return data.data
 }
 
-export async function updateConfig(payload: Partial<Config>): Promise<Config> {
+export async function updateConfig(payload: Partial<Config> & { confirmPassword?: string }): Promise<Config> {
   const { data } = await axiosClient.patch<{ success: true; data: Config }>('/admin/config', payload)
+  return data.data
+}
+
+export async function getConfigAudit(params?: {
+  field?: 'cbu' | 'alias' | 'whatsapp'
+  limit?: number
+  offset?: number
+}): Promise<ConfigAuditResponse> {
+  const { data } = await axiosClient.get<{ success: true; data: ConfigAuditResponse }>('/admin/config/audit', { params })
   return data.data
 }
 

@@ -280,6 +280,24 @@ model Commission {
 }
 
 // ─────────────────────────────────────────────────────────────
+// CONFIG AUDIT LOG — Registro inmutable de cambios críticos
+// ─────────────────────────────────────────────────────────────
+
+model ConfigAuditLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  adminName String
+  field     String   // 'cbu' | 'alias' | 'whatsapp'
+  oldValue  String   // enmascarado
+  newValue  String   // enmascarado
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([field])
+  @@map("config_audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
 // CONFIG — Registro único (singleton) de configuración global
 // ─────────────────────────────────────────────────────────────
 
