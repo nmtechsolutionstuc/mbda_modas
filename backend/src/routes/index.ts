@@ -1,0 +1,15 @@
+import { Router } from 'express'
+import authRoutes from './auth.routes'
+// Fases 2-6: descomentar a medida que se implementan
+// import adminRoutes from './admin.routes'
+// import resellerRoutes from './reseller.routes'
+// import publicRoutes from './public.routes'
+
+const router = Router()
+
+router.use('/auth',     authRoutes)
+// router.use('/admin',    adminRoutes)
+// router.use('/reseller', resellerRoutes)
+// router.use('/public',   publicRoutes)
+
+export default router

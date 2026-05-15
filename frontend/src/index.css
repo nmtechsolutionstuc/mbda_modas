@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* ── Custom properties ──────────────────────────────────────────────────────── */
+:root {
+  --cream:       #f5f3ef;
+  --cream-dark:  #ede9e1;
+  --black:       #111111;
+  --black-soft:  #1e1914;
+  --gold:        #b8922a;
+  --gold-light:  #d4a94b;
+  --border:      #e0dbd0;
+  --text-muted:  #6b7280;
+  --white:       #ffffff;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--cream);
+  color: var(--black);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  line-height: 1.2;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}

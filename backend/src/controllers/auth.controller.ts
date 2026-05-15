@@ -1,0 +1,213 @@
+import { Request, Response } from 'express'
+import { z } from 'zod'
+import type { Reseller } from '@prisma/client'
+import { prisma } from '../config/prisma'
+import { verifyPassword, hashPassword, generateReferralCode, createResellerTokens, rotateRefreshToken, revokeRefreshToken } from '../services/auth.service'
+import { signAccessToken, verifyRefreshToken } from '../utils/jwt'
+import { ok, created, unauthorized, forbidden, notFound, conflict } from '../utils/apiResponse'
+
+// ── Constantes de cookie ──────────────────────────────────────────────────────
+
+const REFRESH_COOKIE = 'refresh_token'
+
+function setRefreshCookie(res: Response, token: string): void {
+  res.cookie(REFRESH_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env['NODE_ENV'] === 'production',
+    sameSite: 'strict',
+    maxAge: 60 * 24 * 60 * 60 * 1000, // 60 días
+    path: '/api/v1/auth',
+  })
+}
+
+function clearRefreshCookie(res: Response): void {
+  res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' })
+}
+
+// ── Helper: mapear Reseller a objeto de respuesta ─────────────────────────────
+
+function resellerToPublic(r: Reseller) {
+  return {
+    id: r.id,
+    email: r.email,
+    firstName: r.firstName,
+    lastName: r.lastName,
+    storeName: r.storeName,
+    storePhoto: r.storePhoto,
+    whatsapp: r.whatsapp,
+    referralCode: r.referralCode,
+    isActive: r.isActive,
+    role: 'RESELLER' as const,
+  }
+}
+
+// ── Schemas de validación ─────────────────────────────────────────────────────
+
+const AdminLoginSchema = z.object({
+  email: z.string().email('Email inválido'),
+  password: z.string().min(1, 'La contraseña es requerida'),
+})
+
+const ResellerLoginSchema = z.object({
+  email: z.string().email('Email inválido'),
+  password: z.string().min(1, 'La contraseña es requerida'),
+})
+
+const ResellerRegisterSchema = z.object({
+  firstName: z.string().min(1, 'El nombre es requerido').max(100),
+  lastName: z.string().min(1, 'El apellido es requerido').max(100),
+  email: z.string().email('Email inválido'),
+  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  whatsapp: z.string().min(8, 'Número de WhatsApp inválido').max(20),
+  storeName: z.string().min(1, 'El nombre de tu tienda es requerido').max(100),
+  acceptTerms: z.literal(true, { errorMap: () => ({ message: 'Debés aceptar los Términos y Condiciones' }) }),
+})
+
+// ── Controllers ───────────────────────────────────────────────────────────────
+
+/**
+ * POST /auth/admin/login
+ * Sin refresh token — sesión stateless para el admin.
+ */
+export async function adminLogin(req: Request, res: Response): Promise<void> {
+  const { email, password } = AdminLoginSchema.parse(req.body)
+
+  const admin = await prisma.admin.findUnique({ where: { email } })
+  if (!admin) { unauthorized(res, 'Credenciales inválidas'); return }
+
+  const valid = await verifyPassword(password, admin.passwordHash)
+  if (!valid) { unauthorized(res, 'Credenciales inválidas'); return }
+
+  const accessToken = signAccessToken({ sub: admin.id, email: admin.email, role: 'ADMIN' })
+
+  ok(res, {
+    accessToken,
+    user: { id: admin.id, email: admin.email, name: admin.name, role: 'ADMIN' },
+  })
+}
+
+/**
+ * POST /auth/reseller/register
+ * Registra un nuevo revendedor, genera referralCode y devuelve tokens.
+ */
+export async function resellerRegister(req: Request, res: Response): Promise<void> {
+  const data = ResellerRegisterSchema.parse(req.body)
+
+  const existing = await prisma.reseller.findUnique({ where: { email: data.email } })
+  if (existing) { conflict(res, 'El email ya está registrado'); return }
+
+  const passwordHash = await hashPassword(data.password)
+  const referralCode = await generateReferralCode()
+
+  const reseller = await prisma.reseller.create({
+    data: {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      passwordHash,
+      whatsapp: data.whatsapp,
+      storeName: data.storeName,
+      referralCode,
+      termsAcceptedAt: new Date(),
+    },
+  })
+
+  const { accessToken, refreshToken } = await createResellerTokens(reseller.id, reseller.email)
+  setRefreshCookie(res, refreshToken)
+
+  created(res, { accessToken, user: resellerToPublic(reseller) })
+}
+
+/**
+ * POST /auth/reseller/login
+ */
+export async function resellerLogin(req: Request, res: Response): Promise<void> {
+  const { email, password } = ResellerLoginSchema.parse(req.body)
+
+  const reseller = await prisma.reseller.findUnique({ where: { email } })
+  if (!reseller) { unauthorized(res, 'Credenciales inválidas'); return }
+  if (!reseller.isActive) { forbidden(res, 'Tu cuenta fue desactivada. Contactá al administrador.'); return }
+
+  const valid = await verifyPassword(password, reseller.passwordHash)
+  if (!valid) { unauthorized(res, 'Credenciales inválidas'); return }
+
+  const { accessToken, refreshToken } = await createResellerTokens(reseller.id, reseller.email)
+  setRefreshCookie(res, refreshToken)
+
+  ok(res, { accessToken, user: resellerToPublic(reseller) })
+}
+
+/**
+ * POST /auth/refresh
+ * Lee la httpOnly cookie, rota el refresh token y devuelve un nuevo accessToken.
+ */
+export async function refresh(req: Request, res: Response): Promise<void> {
+  const token: string | undefined = req.cookies[REFRESH_COOKIE]
+  if (!token) { unauthorized(res, 'No hay sesión activa'); return }
+
+  let jti: string
+  try {
+    const payload = verifyRefreshToken(token)
+    jti = payload.jti
+  } catch {
+    clearRefreshCookie(res)
+    unauthorized(res, 'Token inválido o expirado')
+    return
+  }
+
+  try {
+    const { accessToken, refreshToken: newRefreshToken } = await rotateRefreshToken(jti)
+    setRefreshCookie(res, newRefreshToken)
+    ok(res, { accessToken })
+  } catch (err: unknown) {
+    clearRefreshCookie(res)
+    const e = err as { statusCode?: number; message?: string }
+    if (e.statusCode === 403) {
+      forbidden(res, e.message ?? 'Sin permiso')
+    } else {
+      unauthorized(res, e.message ?? 'Token inválido o expirado')
+    }
+  }
+}
+
+/**
+ * POST /auth/logout
+ * Revoca el refresh token y limpia la cookie.
+ */
+export async function logout(req: Request, res: Response): Promise<void> {
+  const token: string | undefined = req.cookies[REFRESH_COOKIE]
+  if (token) {
+    try {
+      const payload = verifyRefreshToken(token)
+      await revokeRefreshToken(payload.jti)
+    } catch {
+      // Token ya expirado o inválido — ignorar, solo limpiar cookie
+    }
+  }
+  clearRefreshCookie(res)
+  ok(res, { message: 'Sesión cerrada correctamente' })
+}
+
+/**
+ * GET /auth/me
+ * Devuelve los datos del usuario autenticado (admin o revendedor).
+ */
+export async function getMe(req: Request, res: Response): Promise<void> {
+  const { sub, role } = req.user!
+
+  if (role === 'ADMIN') {
+    const admin = await prisma.admin.findUnique({ where: { id: sub } })
+    if (!admin) { notFound(res, 'Admin no encontrado'); return }
+    ok(res, { id: admin.id, email: admin.email, name: admin.name, role: 'ADMIN' })
+    return
+  }
+
+  if (role === 'RESELLER') {
+    const reseller = await prisma.reseller.findUnique({ where: { id: sub } })
+    if (!reseller) { notFound(res, 'Revendedor no encontrado'); return }
+    ok(res, resellerToPublic(reseller))
+    return
+  }
+
+  unauthorized(res)
+}
