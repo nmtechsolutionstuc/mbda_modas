@@ -62,6 +62,76 @@ export const removeCatalogItem = asyncHandler(async (req: Request, res: Response
   ok(res, { message: 'Producto eliminado del catálogo' })
 })
 
+// ── Pedidos del revendedor ───────────────────────────────────────────────────
+
+export const getMyOrders = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const schema = z.object({
+    page:   z.coerce.number().int().min(1).default(1),
+    limit:  z.coerce.number().int().min(1).max(100).default(20),
+    status: z.string().optional(),
+  })
+  const { page, limit, status } = schema.parse(req.query)
+  const where = {
+    resellerId,
+    ...(status && { status: status as any }),
+  }
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.order.count({ where }),
+  ])
+  ok(res, { orders, total, page, totalPages: Math.ceil(total / limit) })
+})
+
+// ── Comisiones del revendedor ────────────────────────────────────────────────
+
+export const getMyCommissions = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const schema = z.object({
+    page:   z.coerce.number().int().min(1).default(1),
+    limit:  z.coerce.number().int().min(1).max(100).default(20),
+    status: z.enum(['PENDING', 'PAID']).optional(),
+  })
+  const { page, limit, status } = schema.parse(req.query)
+  const where = {
+    resellerId,
+    ...(status && { status }),
+  }
+  const [commissions, total] = await Promise.all([
+    prisma.commission.findMany({
+      where,
+      include: { order: { select: { orderNumber: true, buyerName: true, createdAt: true } } },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.commission.count({ where }),
+  ])
+
+  // Totales resumen
+  const [pendingAgg, paidAgg] = await Promise.all([
+    prisma.commission.aggregate({ where: { resellerId, status: 'PENDING' }, _sum: { amount: true } }),
+    prisma.commission.aggregate({ where: { resellerId, status: 'PAID' }, _sum: { amount: true } }),
+  ])
+
+  ok(res, {
+    commissions,
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+    summary: {
+      pending: Number(pendingAgg._sum.amount ?? 0),
+      paid: Number(paidAgg._sum.amount ?? 0),
+    },
+  })
+})
+
 // ── Perfil ───────────────────────────────────────────────────────────────────
 
 export const updateProfile = asyncHandler(async (req: Request, res: Response) => {

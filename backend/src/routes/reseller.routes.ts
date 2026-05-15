@@ -9,6 +9,8 @@ import {
   updateCatalogItem,
   removeCatalogItem,
   updateProfile,
+  getMyOrders,
+  getMyCommissions,
 } from '../controllers/reseller.controller'
 
 const router = Router()
@@ -25,5 +27,9 @@ router.delete('/catalog/:id', removeCatalogItem)
 
 // Perfil
 router.patch('/profile', upload.single('storePhoto'), updateProfile)
+
+// Pedidos y comisiones
+router.get('/orders',      getMyOrders)
+router.get('/commissions', getMyCommissions)
 
 export default router

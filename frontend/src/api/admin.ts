@@ -149,3 +149,169 @@ export async function updateConfig(payload: Partial<Config>): Promise<Config> {
   const { data } = await axiosClient.patch<{ success: true; data: Config }>('/admin/config', payload)
   return data.data
 }
+
+// ── Pedidos ───────────────────────────────────────────────────────────────────
+
+export type OrderStatus = 'PENDING' | 'PROOF_RECEIVED' | 'CONFIRMED' | 'DISPATCHED' | 'CANCELLED'
+export type ShippingMethod = 'CORREO_ARGENTINO' | 'ANDREANI' | 'LOCAL_PICKUP'
+
+export interface OrderItem {
+  id: string
+  productName: string
+  size: string
+  color: string
+  quantity: number
+  unitPrice: string
+  basePrice: string
+  commissionPct: string
+  subtotal: string
+  cancelled: boolean
+}
+
+export interface OrderReseller {
+  id: string
+  firstName: string
+  lastName: string
+  storeName: string
+  whatsapp: string
+  cbu: string | null
+  alias: string | null
+}
+
+export interface Order {
+  id: string
+  orderNumber: string
+  buyerName: string
+  buyerWhatsapp: string
+  buyerEmail: string | null
+  shippingMethod: ShippingMethod
+  shippingAddress: string | null
+  shippingCity: string | null
+  shippingProvince: string | null
+  shippingZip: string | null
+  subtotal: string
+  total: string
+  status: OrderStatus
+  cancelReason: string | null
+  reservedUntil: string
+  trackingNumber: string | null
+  createdAt: string
+  reseller: OrderReseller
+  items: OrderItem[]
+  commissions: Commission[]
+}
+
+export interface OrdersResponse {
+  orders: Order[]
+  total: number
+  page: number
+  totalPages: number
+}
+
+export async function getAdminOrders(params?: {
+  page?: number
+  limit?: number
+  status?: string
+  resellerId?: string
+}): Promise<OrdersResponse> {
+  const { data } = await axiosClient.get<{ success: true; data: OrdersResponse }>('/admin/orders', { params })
+  return data.data
+}
+
+export async function getAdminOrder(id: string): Promise<Order> {
+  const { data } = await axiosClient.get<{ success: true; data: Order }>(`/admin/orders/${id}`)
+  return data.data
+}
+
+export async function confirmOrderPayment(id: string): Promise<Order> {
+  const { data } = await axiosClient.patch<{ success: true; data: Order }>(`/admin/orders/${id}/confirm`)
+  return data.data
+}
+
+export async function dispatchOrder(id: string, trackingNumber: string): Promise<Order> {
+  const { data } = await axiosClient.patch<{ success: true; data: Order }>(`/admin/orders/${id}/dispatch`, { trackingNumber })
+  return data.data
+}
+
+export async function cancelAdminOrder(id: string, cancelReason: string): Promise<Order> {
+  const { data } = await axiosClient.patch<{ success: true; data: Order }>(`/admin/orders/${id}/cancel`, { cancelReason })
+  return data.data
+}
+
+// ── Comisiones ────────────────────────────────────────────────────────────────
+
+export interface Commission {
+  id: string
+  resellerId: string
+  orderId: string
+  amount: string
+  status: 'PENDING' | 'PAID'
+  paidAt: string | null
+  createdAt: string
+}
+
+export interface CommissionsResponse {
+  commissions: Commission[]
+  total: number
+  page: number
+  totalPages: number
+}
+
+export async function getAdminCommissions(params?: {
+  page?: number
+  limit?: number
+  status?: string
+  resellerId?: string
+}): Promise<CommissionsResponse> {
+  const { data } = await axiosClient.get<{ success: true; data: CommissionsResponse }>('/admin/commissions', { params })
+  return data.data
+}
+
+export async function markCommissionPaid(id: string): Promise<Commission> {
+  const { data } = await axiosClient.patch<{ success: true; data: Commission }>(`/admin/commissions/${id}/mark-paid`)
+  return data.data
+}
+
+// ── Revendedores ──────────────────────────────────────────────────────────────
+
+export interface AdminReseller {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  whatsapp: string
+  storeName: string
+  storePhoto: string | null
+  referralCode: string
+  cbu: string | null
+  alias: string | null
+  isActive: boolean
+  termsAcceptedAt: string | null
+  createdAt: string
+  _count: {
+    catalogItems: number
+    orders: number
+    commissions: number
+  }
+}
+
+export interface ResellersResponse {
+  resellers: AdminReseller[]
+  total: number
+  page: number
+  totalPages: number
+}
+
+export async function getAdminResellers(params?: {
+  page?: number
+  limit?: number
+  isActive?: boolean
+}): Promise<ResellersResponse> {
+  const { data } = await axiosClient.get<{ success: true; data: ResellersResponse }>('/admin/resellers', { params })
+  return data.data
+}
+
+export async function toggleResellerActive(id: string): Promise<AdminReseller> {
+  const { data } = await axiosClient.patch<{ success: true; data: AdminReseller }>(`/admin/resellers/${id}/toggle`)
+  return data.data
+}

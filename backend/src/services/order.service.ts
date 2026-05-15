@@ -1,0 +1,282 @@
+import { prisma } from '../config/prisma'
+import { calcularComision } from '../utils/commission'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function generateOrderNumber(): string {
+  const digits = Math.floor(1000 + Math.random() * 9000)
+  return `ORD-${digits}`
+}
+
+/** Cancela pedidos PENDING con reservedUntil vencido y libera el stock */
+export async function lazyExpireOrders() {
+  const expired = await prisma.order.findMany({
+    where: { status: 'PENDING', reservedUntil: { lt: new Date() } },
+    include: { items: true },
+  })
+
+  for (const order of expired) {
+    await prisma.$transaction(async tx => {
+      // Liberar stock de cada ítem no cancelado
+      for (const item of order.items.filter(i => !i.cancelled)) {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stock: { increment: item.quantity } },
+        })
+      }
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: 'CANCELLED', cancelReason: 'Pago no recibido en plazo' },
+      })
+    })
+  }
+}
+
+// ── Crear pedido público ──────────────────────────────────────────────────────
+
+export interface CartItem {
+  variantId: string
+  quantity: number
+}
+
+export interface CreateOrderInput {
+  refCode: string
+  buyerName: string
+  buyerWhatsapp: string
+  buyerEmail?: string
+  shippingMethod: 'CORREO_ARGENTINO' | 'ANDREANI' | 'LOCAL_PICKUP'
+  shippingAddress?: string
+  shippingCity?: string
+  shippingProvince?: string
+  shippingZip?: string
+  items: CartItem[]
+}
+
+export async function createPublicOrder(input: CreateOrderInput) {
+  // Lazy expire antes de reservar
+  await lazyExpireOrders()
+
+  const reseller = await prisma.reseller.findFirst({
+    where: { referralCode: input.refCode, isActive: true },
+  })
+  if (!reseller) throw Object.assign(new Error('Revendedor no encontrado'), { status: 404 })
+
+  const config = await prisma.config.findFirst()
+  if (!config) throw Object.assign(new Error('Configuración no encontrada'), { status: 500 })
+
+  // Generar orderNumber único
+  let orderNumber = generateOrderNumber()
+  let attempts = 0
+  while (await prisma.order.findUnique({ where: { orderNumber } }) && attempts < 20) {
+    orderNumber = generateOrderNumber()
+    attempts++
+  }
+
+  const reservedUntil = new Date(Date.now() + config.stockReserveHours * 60 * 60 * 1000)
+
+  return await prisma.$transaction(async tx => {
+    let subtotal = 0
+    const orderItemsData: {
+      variantId: string
+      productId: string
+      productName: string
+      size: string
+      color: string
+      quantity: number
+      unitPrice: number
+      basePrice: number
+      commissionPct: number
+      subtotal: number
+    }[] = []
+
+    for (const cartItem of input.items) {
+      const variant = await tx.productVariant.findUnique({
+        where: { id: cartItem.variantId },
+        include: { product: true },
+      })
+      if (!variant) throw Object.assign(new Error(`Variante ${cartItem.variantId} no encontrada`), { status: 404 })
+      if (variant.stock < cartItem.quantity) {
+        throw Object.assign(
+          new Error(`Stock insuficiente para ${variant.product.name} (${variant.size}/${variant.color})`),
+          { status: 409 },
+        )
+      }
+
+      // Obtener precio del catálogo del revendedor
+      const catalogItem = await tx.catalogItem.findUnique({
+        where: { resellerId_productId: { resellerId: reseller.id, productId: variant.productId } },
+      })
+      if (!catalogItem) {
+        throw Object.assign(new Error(`${variant.product.name} no está en el catálogo de este revendedor`), { status: 404 })
+      }
+
+      const unitPrice = Number(catalogItem.sellingPrice)
+      const lineSubtotal = unitPrice * cartItem.quantity
+      subtotal += lineSubtotal
+
+      // Reservar stock
+      await tx.productVariant.update({
+        where: { id: cartItem.variantId },
+        data: { stock: { decrement: cartItem.quantity } },
+      })
+
+      orderItemsData.push({
+        variantId: cartItem.variantId,
+        productId: variant.productId,
+        productName: variant.product.name,
+        size: variant.size,
+        color: variant.color,
+        quantity: cartItem.quantity,
+        unitPrice,
+        basePrice: Number(variant.product.basePrice),
+        commissionPct: Number(variant.product.commissionPct),
+        subtotal: lineSubtotal,
+      })
+    }
+
+    const order = await tx.order.create({
+      data: {
+        orderNumber,
+        resellerId: reseller.id,
+        buyerName: input.buyerName,
+        buyerWhatsapp: input.buyerWhatsapp,
+        buyerEmail: input.buyerEmail,
+        shippingMethod: input.shippingMethod,
+        shippingAddress: input.shippingAddress,
+        shippingCity: input.shippingCity,
+        shippingProvince: input.shippingProvince,
+        shippingZip: input.shippingZip,
+        subtotal,
+        total: subtotal,
+        status: 'PENDING',
+        reservedUntil,
+        items: { create: orderItemsData },
+      },
+      include: {
+        items: true,
+        reseller: { select: { storeName: true, whatsapp: true } },
+      },
+    })
+
+    return { order, config }
+  })
+}
+
+// ── Admin: gestión de pedidos ────────────────────────────────────────────────
+
+export async function listOrders(opts: {
+  page: number
+  limit: number
+  status?: string
+  resellerId?: string
+}) {
+  await lazyExpireOrders()
+  const where = {
+    ...(opts.status && { status: opts.status as any }),
+    ...(opts.resellerId && { resellerId: opts.resellerId }),
+  }
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      include: {
+        reseller: { select: { id: true, firstName: true, lastName: true, storeName: true, whatsapp: true, cbu: true, alias: true } },
+        items: { include: { variant: { select: { id: true } } } },
+        commissions: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (opts.page - 1) * opts.limit,
+      take: opts.limit,
+    }),
+    prisma.order.count({ where }),
+  ])
+  return { orders, total, page: opts.page, totalPages: Math.ceil(total / opts.limit) }
+}
+
+export async function getOrder(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      reseller: { select: { id: true, firstName: true, lastName: true, storeName: true, email: true, whatsapp: true, cbu: true, alias: true } },
+      items: true,
+      commissions: true,
+    },
+  })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  return order
+}
+
+export async function confirmOrder(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true, reseller: true },
+  })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status !== 'PENDING' && order.status !== 'PROOF_RECEIVED') {
+    throw Object.assign(new Error('El pedido no se puede confirmar en su estado actual'), { status: 400 })
+  }
+
+  return await prisma.$transaction(async tx => {
+    await tx.order.update({ where: { id: orderId }, data: { status: 'CONFIRMED' } })
+
+    // Crear comisiones por cada ítem
+    const commissionsData = order.items
+      .filter(i => !i.cancelled)
+      .map(item => ({
+        resellerId: order.resellerId,
+        orderId: order.id,
+        amount: calcularComision(Number(item.unitPrice), Number(item.basePrice), Number(item.commissionPct)),
+      }))
+
+    if (commissionsData.length > 0) {
+      await tx.commission.createMany({ data: commissionsData })
+    }
+
+    return tx.order.findUnique({
+      where: { id: orderId },
+      include: { reseller: true, items: true, commissions: true },
+    })
+  })
+}
+
+export async function dispatchOrder(orderId: string, trackingNumber: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId } })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status !== 'CONFIRMED') {
+    throw Object.assign(new Error('Solo se pueden despachar pedidos confirmados'), { status: 400 })
+  }
+
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { status: 'DISPATCHED', trackingNumber },
+    include: { reseller: true, items: true },
+  })
+}
+
+export async function cancelOrder(orderId: string, cancelReason: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status === 'DISPATCHED' || order.status === 'CANCELLED') {
+    throw Object.assign(new Error('No se puede cancelar este pedido'), { status: 400 })
+  }
+
+  return await prisma.$transaction(async tx => {
+    // Devolver stock si era PENDING o PROOF_RECEIVED
+    if (order.status === 'PENDING' || order.status === 'PROOF_RECEIVED') {
+      for (const item of order.items.filter(i => !i.cancelled)) {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stock: { increment: item.quantity } },
+        })
+      }
+    }
+
+    return tx.order.update({
+      where: { id: orderId },
+      data: { status: 'CANCELLED', cancelReason },
+      include: { reseller: true, items: true },
+    })
+  })
+}

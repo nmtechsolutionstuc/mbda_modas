@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { getDashboardStats, type DashboardStats } from '../../api/admin'
 
-const MENU = [
+interface MenuItem { title: string; desc: string; icon: string; href: string; active: boolean; phase?: string }
+const MENU: MenuItem[] = [
   { title: 'Productos', desc: 'Creá y gestioná el catálogo de MBDA', icon: '👗', href: '/admin/productos', active: true },
   { title: 'Configuración', desc: 'CBU, alias, WhatsApp, pedidos', icon: '⚙️', href: '/admin/configuracion', active: true },
   { title: 'Landing Page', desc: 'Editá el contenido de la página de inicio', icon: '🖋️', href: '/admin/landing', active: true },
-  { title: 'Pedidos', desc: 'Confirmá pagos y despachá pedidos', icon: '📦', href: '/admin/pedidos', active: false, phase: 'Fase 5' },
-  { title: 'Revendedores', desc: 'Gestioná cuentas de revendedores', icon: '👥', href: '/admin/revendedores', active: false, phase: 'Fase 6' },
+  { title: 'Pedidos', desc: 'Confirmá pagos y despachá pedidos', icon: '📦', href: '/admin/pedidos', active: true },
+  { title: 'Revendedores', desc: 'Gestioná cuentas de revendedores', icon: '👥', href: '/admin/revendedores', active: true },
 ]
 
 export function AdminDashboard() {

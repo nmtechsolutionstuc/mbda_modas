@@ -2,11 +2,12 @@ import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { isReseller } from '../../types'
 
-const MENU = [
+interface MenuItem { title: string; desc: string; icon: string; href: string; active: boolean; phase?: string }
+const MENU: MenuItem[] = [
   { title: 'Mi Catálogo', desc: 'Agregá y gestioná tus productos con tus precios', icon: '🛍️', href: '/panel/catalogo', active: true },
   { title: 'Mi Perfil', desc: 'Editá los datos de tu tienda y datos de cobro', icon: '⚙️', href: '/panel/perfil', active: true },
-  { title: 'Mis Ventas', desc: 'Seguí el estado de tus pedidos', icon: '📦', href: '/panel/ventas', active: false, phase: 'Próximamente' },
-  { title: 'Mis Comisiones', desc: 'Revisá tus ganancias acumuladas', icon: '💰', href: '/panel/comisiones', active: false, phase: 'Próximamente' },
+  { title: 'Mis Ventas', desc: 'Seguí el estado de tus pedidos', icon: '📦', href: '/panel/ventas', active: true },
+  { title: 'Mis Comisiones', desc: 'Revisá tus ganancias acumuladas', icon: '💰', href: '/panel/comisiones', active: true },
 ]
 
 export function PanelDashboard() {

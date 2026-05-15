@@ -18,6 +18,14 @@ import {
   updateConfig,
   getDashboardStats,
 } from '../controllers/admin.config.controller'
+import {
+  getOrders, getOrderById, confirmOrderPayment,
+  dispatchOrderAction, cancelOrderAction,
+  listCommissions, markCommissionPaid,
+} from '../controllers/admin.order.controller'
+import {
+  listResellers, deactivateReseller,
+} from '../controllers/admin.reseller.controller'
 
 const router = Router()
 
@@ -42,5 +50,20 @@ router.patch('/categories/:id',          asyncHandler(updateCategoryHandler))
 // ── Configuración ─────────────────────────────────────────────────────────────
 router.get('/config',                    asyncHandler(getConfig))
 router.patch('/config',                  asyncHandler(updateConfig))
+
+// ── Pedidos ───────────────────────────────────────────────────────────────────
+router.get('/orders',                      getOrders)
+router.get('/orders/:id',                  getOrderById)
+router.patch('/orders/:id/confirm',        confirmOrderPayment)
+router.patch('/orders/:id/dispatch',       dispatchOrderAction)
+router.patch('/orders/:id/cancel',         cancelOrderAction)
+
+// ── Comisiones ────────────────────────────────────────────────────────────────
+router.get('/commissions',                 listCommissions)
+router.patch('/commissions/:id/mark-paid', markCommissionPaid)
+
+// ── Revendedores ──────────────────────────────────────────────────────────────
+router.get('/resellers',                   listResellers)
+router.patch('/resellers/:id/toggle',      deactivateReseller)
 
 export default router
