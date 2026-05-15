@@ -15,6 +15,8 @@ export interface ResellerUser {
   storeName: string
   storePhoto: string | null
   whatsapp: string
+  cbu: string | null
+  alias: string | null
   referralCode: string
   isActive: boolean
   role: 'RESELLER'

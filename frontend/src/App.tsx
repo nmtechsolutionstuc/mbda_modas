@@ -9,6 +9,8 @@ import { LandingPage } from './pages/public/LandingPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { PanelDashboard } from './pages/panel/PanelDashboard'
+import { MyCatalogPage } from './pages/panel/MyCatalogPage'
+import { MyProfilePage } from './pages/panel/MyProfilePage'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminProductsPage } from './pages/admin/AdminProductsPage'
 import { AdminConfigPage } from './pages/admin/AdminConfigPage'
@@ -30,7 +32,9 @@ function App() {
                 <Route path="/registro" element={<RegisterPage />} />
 
                 {/* Revendedor autenticado */}
-                <Route path="/panel" element={<ProtectedRoute><PanelDashboard /></ProtectedRoute>} />
+                <Route path="/panel"          element={<ProtectedRoute><PanelDashboard /></ProtectedRoute>} />
+                <Route path="/panel/catalogo" element={<ProtectedRoute><MyCatalogPage /></ProtectedRoute>} />
+                <Route path="/panel/perfil"   element={<ProtectedRoute><MyProfilePage /></ProtectedRoute>} />
 
                 {/* Admin — Fase 1 + 2 */}
                 <Route path="/admin"              element={<AdminRoute><AdminDashboard /></AdminRoute>} />
