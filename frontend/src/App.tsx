@@ -10,6 +10,9 @@ import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { PanelDashboard } from './pages/panel/PanelDashboard'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
+import { AdminProductsPage } from './pages/admin/AdminProductsPage'
+import { AdminConfigPage } from './pages/admin/AdminConfigPage'
+import { AdminLandingPage } from './pages/admin/AdminLandingPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 function App() {
@@ -27,16 +30,13 @@ function App() {
                 <Route path="/registro" element={<RegisterPage />} />
 
                 {/* Revendedor autenticado */}
-                <Route
-                  path="/panel"
-                  element={<ProtectedRoute><PanelDashboard /></ProtectedRoute>}
-                />
+                <Route path="/panel" element={<ProtectedRoute><PanelDashboard /></ProtectedRoute>} />
 
-                {/* Admin */}
-                <Route
-                  path="/admin"
-                  element={<AdminRoute><AdminDashboard /></AdminRoute>}
-                />
+                {/* Admin — Fase 1 + 2 */}
+                <Route path="/admin"              element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                <Route path="/admin/productos"    element={<AdminRoute><AdminProductsPage /></AdminRoute>} />
+                <Route path="/admin/configuracion" element={<AdminRoute><AdminConfigPage /></AdminRoute>} />
+                <Route path="/admin/landing"      element={<AdminRoute><AdminLandingPage /></AdminRoute>} />
 
                 {/* 404 */}
                 <Route path="*" element={<NotFoundPage />} />

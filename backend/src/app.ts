@@ -61,6 +61,9 @@ if (env.nodeEnv !== 'test') {
   app.use(morgan('dev'))
 }
 
+// ── Archivos estáticos (fotos locales) ────────────────────────────────────────
+app.use('/uploads', express.static('public/uploads'))
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
