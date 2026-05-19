@@ -30,16 +30,36 @@ function saveCart(refCode: string, items: CartItem[]) {
 }
 
 // ── ProductCard ───────────────────────────────────────────────────────────────
-function ProductCard({ product, onAdd }: { product: PublicProduct; onAdd: (item: CartItem) => void }) {
+function ProductCard({ product, cart, onAdd }: {
+  product: PublicProduct
+  cart: CartItem[]
+  onAdd: (item: CartItem, variantStock: number) => void
+}) {
   const [open, setOpen] = useState(false)
   const [selVariant, setSelVariant] = useState<PublicVariant | null>(null)
   const [qty, setQty] = useState(1)
 
   const photo = product.photos[0] ?? null
-  const availVariants = product.variants.filter(v => v.stock > 0)
+
+  // Calcula cuántas unidades de cada variante ya están en el carrito
+  function inCartQty(variantId: string) {
+    return cart.find(i => i.variantId === variantId)?.quantity ?? 0
+  }
+
+  // Solo muestra variantes con al menos 1 unidad disponible (stock - ya en carrito)
+  const availVariants = product.variants.filter(v => v.stock - inCartQty(v.id) > 0)
+
+  // Cuántas unidades quedan disponibles para agregar de la variante seleccionada
+  const maxAddable = selVariant ? selVariant.stock - inCartQty(selVariant.id) : 0
+
+  // Resetear qty si supera el nuevo máximo al cambiar de variante
+  function selectVariant(v: PublicVariant | null) {
+    setSelVariant(v)
+    setQty(1)
+  }
 
   function handleAdd() {
-    if (!selVariant) return
+    if (!selVariant || qty < 1 || qty > maxAddable) return
     onAdd({
       variantId: selVariant.id,
       productId: product.productId,
@@ -49,7 +69,7 @@ function ProductCard({ product, onAdd }: { product: PublicProduct; onAdd: (item:
       photo: photo ?? '',
       quantity: qty,
       unitPrice: product.sellingPrice,
-    })
+    }, selVariant.stock)
     setOpen(false)
     setSelVariant(null)
     setQty(1)
@@ -120,55 +140,79 @@ function ProductCard({ product, onAdd }: { product: PublicProduct; onAdd: (item:
               {/* Variantes */}
               <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>Talle y color</p>
               {availVariants.length === 0 ? (
-                <p style={{ fontSize: '0.875rem', color: '#ef4444', fontWeight: 600, marginBottom: '1rem' }}>Sin stock disponible</p>
+                <p style={{ fontSize: '0.875rem', color: '#ef4444', fontWeight: 600, marginBottom: '1rem' }}>
+                  Sin stock disponible
+                </p>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
-                  {availVariants.map(v => (
-                    <button
-                      key={v.id}
-                      onClick={() => setSelVariant(selVariant?.id === v.id ? null : v)}
-                      style={{
-                        padding: '0.45rem 1rem', borderRadius: '0.625rem', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.12s',
-                        border: selVariant?.id === v.id ? `2px solid ${GOLD}` : '1.5px solid #e0dbd0',
-                        background: selVariant?.id === v.id ? '#fef9ec' : '#faf9f7',
-                        color: selVariant?.id === v.id ? GOLD : '#374151',
-                        boxShadow: selVariant?.id === v.id ? `0 0 0 3px ${GOLD}22` : 'none',
-                      }}
-                    >
-                      {v.size} / {v.color}
-                      <span style={{ color: selVariant?.id === v.id ? '#c9a84c' : '#9ca3af', fontWeight: 400, marginLeft: '0.3rem', fontSize: '0.8rem' }}>({v.stock})</span>
-                    </button>
-                  ))}
+                  {product.variants.map(v => {
+                    const reserved = inCartQty(v.id)
+                    const remaining = v.stock - reserved
+                    const soldOut = remaining <= 0
+                    const selected = selVariant?.id === v.id
+                    return (
+                      <button
+                        key={v.id}
+                        disabled={soldOut}
+                        onClick={() => selectVariant(selected ? null : v)}
+                        style={{
+                          padding: '0.45rem 1rem', borderRadius: '0.625rem', fontSize: '0.875rem', fontWeight: 600,
+                          cursor: soldOut ? 'not-allowed' : 'pointer', transition: 'all 0.12s',
+                          border: selected ? `2px solid ${GOLD}` : '1.5px solid #e0dbd0',
+                          background: soldOut ? '#f5f3ef' : selected ? '#fef9ec' : '#faf9f7',
+                          color: soldOut ? '#9ca3af' : selected ? GOLD : '#374151',
+                          boxShadow: selected ? `0 0 0 3px ${GOLD}22` : 'none',
+                          opacity: soldOut ? 0.6 : 1,
+                          textDecoration: soldOut ? 'line-through' : 'none',
+                        }}
+                      >
+                        {v.size} / {v.color}
+                        <span style={{ color: soldOut ? '#9ca3af' : selected ? '#c9a84c' : '#9ca3af', fontWeight: 400, marginLeft: '0.3rem', fontSize: '0.8rem' }}>
+                          ({soldOut ? 'agotado' : remaining})
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
 
               {/* Cantidad */}
               {selVariant && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', marginBottom: '1.25rem', background: CREAM, borderRadius: '0.75rem', padding: '0.75rem 1rem' }}>
-                  <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', margin: 0, flex: 1 }}>Cantidad</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <button
-                      onClick={() => setQty(q => Math.max(1, q - 1))}
-                      style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >−</button>
-                    <span style={{ fontWeight: 700, fontSize: '1.125rem', minWidth: '28px', textAlign: 'center', color: '#111' }}>{qty}</span>
-                    <button
-                      onClick={() => setQty(q => Math.min(selVariant.stock, q + 1))}
-                      style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >+</button>
+                <div style={{ marginBottom: '1.25rem', background: CREAM, borderRadius: '0.75rem', padding: '0.75rem 1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                    <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', margin: 0, flex: 1 }}>Cantidad</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <button
+                        onClick={() => setQty(q => Math.max(1, q - 1))}
+                        style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >−</button>
+                      <span style={{ fontWeight: 700, fontSize: '1.125rem', minWidth: '28px', textAlign: 'center', color: '#111' }}>{qty}</span>
+                      <button
+                        onClick={() => setQty(q => Math.min(maxAddable, q + 1))}
+                        disabled={qty >= maxAddable}
+                        style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e0dbd0', background: '#fff', cursor: qty >= maxAddable ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: qty >= maxAddable ? 0.4 : 1 }}
+                      >+</button>
+                    </div>
                   </div>
+                  {/* Info stock disponible */}
+                  <p style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.375rem', marginBottom: 0 }}>
+                    {inCartQty(selVariant.id) > 0
+                      ? <>Ya tenés <strong>{inCartQty(selVariant.id)}</strong> en el carrito · Podés agregar hasta <strong>{maxAddable}</strong> más</>
+                      : <>Stock disponible: <strong>{maxAddable}</strong> unidades</>
+                    }
+                  </p>
                 </div>
               )}
 
               {/* CTA */}
               <button
                 onClick={handleAdd}
-                disabled={!selVariant || availVariants.length === 0}
+                disabled={!selVariant || qty < 1 || qty > maxAddable}
                 style={{
                   width: '100%', padding: '0.875rem', borderRadius: '0.75rem', border: 'none',
-                  background: selVariant ? '#111' : '#e0dbd0',
-                  color: selVariant ? '#fff' : '#9ca3af',
-                  fontWeight: 700, fontSize: '1rem', cursor: selVariant ? 'pointer' : 'not-allowed',
+                  background: (selVariant && qty >= 1 && qty <= maxAddable) ? '#111' : '#e0dbd0',
+                  color: (selVariant && qty >= 1 && qty <= maxAddable) ? '#fff' : '#9ca3af',
+                  fontWeight: 700, fontSize: '1rem', cursor: (selVariant && qty >= 1 && qty <= maxAddable) ? 'pointer' : 'not-allowed',
                   transition: 'opacity 0.15s',
                 }}
               >
@@ -402,12 +446,14 @@ export function CatalogPage() {
       .finally(() => setLoading(false))
   }, [refCode])
 
-  function addToCart(item: CartItem) {
+  function addToCart(item: CartItem, variantStock: number) {
     setCart(prev => {
       const existing = prev.find(i => i.variantId === item.variantId)
+      const currentQty = existing?.quantity ?? 0
+      const newQty = Math.min(currentQty + item.quantity, variantStock) // nunca supera el stock
       const next = existing
-        ? prev.map(i => i.variantId === item.variantId ? { ...i, quantity: i.quantity + item.quantity } : i)
-        : [...prev, item]
+        ? prev.map(i => i.variantId === item.variantId ? { ...i, quantity: newQty } : i)
+        : [...prev, { ...item, quantity: newQty }]
       saveCart(refCode, next)
       return next
     })
@@ -513,7 +559,7 @@ export function CatalogPage() {
             {filtered.length === 0
               ? <p style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>No se encontraron productos</p>
               : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-                  {filtered.map(p => <ProductCard key={p.productId} product={p} onAdd={addToCart} />)}
+                  {filtered.map(p => <ProductCard key={p.productId} product={p} cart={cart} onAdd={addToCart} />)}
                 </div>
             }
           </>
