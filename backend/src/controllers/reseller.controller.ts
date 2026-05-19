@@ -12,6 +12,17 @@ import {
 } from '../services/catalog.service'
 import { persistPhotos, deletePhoto } from '../services/upload.service'
 
+// ── Categorías accesibles por revendedor ────────────────────────────────────
+
+export const getMyCategories = asyncHandler(async (_req: Request, res: Response) => {
+  const categories = await prisma.category.findMany({
+    where: { isActive: true },
+    orderBy: { order: 'asc' },
+    select: { id: true, name: true },
+  })
+  ok(res, categories)
+})
+
 // ── Catálogo ─────────────────────────────────────────────────────────────────
 
 export const getMyCatalog = asyncHandler(async (req: Request, res: Response) => {

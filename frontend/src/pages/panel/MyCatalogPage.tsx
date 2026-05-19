@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useToast } from '../../context/ToastContext'
-import { getCategories } from '../../api/admin'
-import type { Category } from '../../api/admin'
 import {
   getMyCatalog,
+  getResellerCategories,
   getAvailableProducts,
   addToCatalog,
   updateCatalogItem,
   removeCatalogItem,
   type CatalogItem,
   type AvailableProduct,
+  type ResellerCategory,
 } from '../../api/reseller'
 
 const API_BASE = import.meta.env.VITE_API_URL?.replace('/api/v1', '') ?? 'http://localhost:3000'
@@ -328,7 +328,7 @@ export function MyCatalogPage() {
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
 
   // Agregar productos
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categories, setCategories] = useState<ResellerCategory[]>([])
   const [available, setAvailable] = useState<AvailableProduct[]>([])
   const [totalPages, setTotalPages] = useState(1)
   const [page, setPage] = useState(1)
@@ -339,10 +339,10 @@ export function MyCatalogPage() {
   useEffect(() => {
     Promise.all([
       getMyCatalog(),
-      getCategories(),
+      getResellerCategories(),
     ]).then(([items, cats]) => {
       setCatalogItems(items)
-      setCategories(cats.filter(c => c.isActive))
+      setCategories(cats)
     }).catch(() => showToast('Error al cargar datos', 'error'))
       .finally(() => setLoading(false))
   }, []) // eslint-disable-line

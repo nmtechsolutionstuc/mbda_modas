@@ -5,6 +5,7 @@ import { upload } from '../services/upload.service'
 import {
   getMyCatalog,
   getMyProducts,
+  getMyCategories,
   addToCatalog,
   updateCatalogItem,
   removeCatalogItem,
@@ -20,6 +21,7 @@ router.use(authenticate, authorize('RESELLER'))
 
 // Catálogo
 router.get('/catalog',       getMyCatalog)
+router.get('/categories',    getMyCategories)
 router.get('/products',      getMyProducts)
 router.post('/catalog',      addToCatalog)
 router.patch('/catalog/:id', updateCatalogItem)

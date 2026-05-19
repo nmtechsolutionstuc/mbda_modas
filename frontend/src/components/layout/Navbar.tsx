@@ -61,7 +61,7 @@ export function Navbar() {
     <nav style={navStyle}>
       {/* Logo */}
       <Link to="/" style={logoStyle}>
-        MBDA Revendedores
+        MBDA
       </Link>
 
       {/* Links condicionales */}

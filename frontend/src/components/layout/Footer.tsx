@@ -11,7 +11,7 @@ export function Footer() {
       }}
     >
       <p style={{ fontFamily: "'Playfair Display', serif", color: '#f5f3ef', fontSize: '1rem', marginBottom: '0.5rem' }}>
-        MBDA Revendedores
+        MBDA
       </p>
       <p>© {new Date().getFullYear()} MBDA Modas. Todos los derechos reservados.</p>
     </footer>
