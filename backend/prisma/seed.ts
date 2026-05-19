@@ -3,34 +3,8 @@ import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
-async function main() {
-  console.log('🌱 Seeding database...\n')
-
-  // ── Admin ─────────────────────────────────────────────────
-  const passwordHash = await bcrypt.hash('admin123', 10)
-  const admin = await prisma.admin.upsert({
-    where: { email: 'admin@mbdamodas.com' },
-    update: {},
-    create: {
-      email: 'admin@mbdamodas.com',
-      passwordHash,
-      name: 'Admin MBDA Revendedores',
-    },
-  })
-  console.log(`✅ Admin:      ${admin.email}  (contraseña: admin123)`)
-
-  // ── Config ────────────────────────────────────────────────
-  await prisma.config.upsert({
-    where: { id: 'singleton' },
-    update: {},
-    create: {
-      id: 'singleton',
-      cbu: '',
-      alias: '',
-      whatsapp: '',
-      dispatchDays: 3,
-      stockReserveHours: 24,
-      termsContent: `# Términos y Condiciones del Programa de Revendedores
+// ── T&C completos (se aplican tanto en create como en update) ─────────────────
+const TERMS_CONTENT = `# Términos y Condiciones del Programa de Revendedores
 ## MBDA Modas — Programa de Revendedores
 
 Al registrarte en la plataforma MBDA Revendedores y activar tu cuenta, declarás haber leído, comprendido y aceptado en su totalidad los presentes Términos y Condiciones. Si no estás de acuerdo con alguno de estos puntos, no debés registrarte ni utilizar la plataforma.
@@ -235,11 +209,41 @@ Estos Términos y Condiciones se rigen por las leyes de la **República Argentin
 
 ---
 
-*Al hacer clic en "Crear cuenta gratis" confirmás que leíste y aceptaste íntegramente estos Términos y Condiciones.*`,
+*Al hacer clic en "Crear cuenta gratis" confirmás que leíste y aceptaste íntegramente estos Términos y Condiciones.*`
+
+async function main() {
+  console.log('🌱 Seeding database...\n')
+
+  // ── Admin ─────────────────────────────────────────────────
+  const passwordHash = await bcrypt.hash('admin123', 10)
+  const admin = await prisma.admin.upsert({
+    where: { email: 'admin@mbdamodas.com' },
+    update: {},
+    create: {
+      email: 'admin@mbdamodas.com',
+      passwordHash,
+      name: 'Admin MBDA Revendedores',
+    },
+  })
+  console.log(`✅ Admin:      ${admin.email}  (contraseña: admin123)`)
+
+  // ── Config ────────────────────────────────────────────────
+  // update incluye termsContent para actualizar instalaciones existentes con T&C viejos
+  await prisma.config.upsert({
+    where: { id: 'singleton' },
+    update: { termsContent: TERMS_CONTENT, termsUpdatedAt: new Date() },
+    create: {
+      id: 'singleton',
+      cbu: '',
+      alias: '',
+      whatsapp: '',
+      dispatchDays: 3,
+      stockReserveHours: 24,
+      termsContent: TERMS_CONTENT,
       termsUpdatedAt: new Date(),
     },
   })
-  console.log('✅ Config:     singleton (valores por defecto)')
+  console.log('✅ Config:     singleton (T&C actualizados)')
 
   // ── Categorías ────────────────────────────────────────────
   const categorias = [
