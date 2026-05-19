@@ -76,54 +76,108 @@ function ProductCard({ product, onAdd }: { product: PublicProduct; onAdd: (item:
         </div>
       </div>
 
-      {/* Modal de variante */}
+      {/* Modal de producto */}
       {open && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setOpen(false)}>
-          <div style={{ background: '#fff', borderRadius: '1.25rem 1.25rem 0 0', padding: '1.5rem', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-              {photo && <img src={photo} alt="" style={{ width: '80px', height: '80px', borderRadius: '0.625rem', objectFit: 'cover' }} />}
-              <div>
-                <p style={{ fontWeight: 700, fontSize: '1rem', color: '#111' }}>{product.name}</p>
-                <p style={{ fontWeight: 700, fontSize: '1.25rem', color: GOLD }}>${product.sellingPrice.toLocaleString('es-AR')}</p>
-              </div>
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          onClick={() => setOpen(false)}
+        >
+          <div
+            style={{ background: '#fff', borderRadius: '1.25rem', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.22)', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Foto */}
+            <div style={{ position: 'relative', background: CREAM, borderRadius: '1.25rem 1.25rem 0 0', overflow: 'hidden', flexShrink: 0 }}>
+              {photo
+                ? <img src={photo} alt={product.name} style={{ width: '100%', height: '280px', objectFit: 'cover', display: 'block' }} />
+                : <div style={{ height: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '5rem' }}>🧥</div>
+              }
+              {/* Botón cerrar */}
+              <button
+                onClick={() => setOpen(false)}
+                style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', width: '36px', height: '36px', borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+              {/* Badge categoría */}
+              <span style={{ position: 'absolute', bottom: '0.75rem', left: '0.75rem', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: '0.75rem', fontWeight: 600, padding: '0.25rem 0.625rem', borderRadius: '99px' }}>
+                {product.category.name}
+              </span>
             </div>
 
-            {product.description && <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1rem' }}>{product.description}</p>}
-
-            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e1914', marginBottom: '0.5rem' }}>Talle y color</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-              {availVariants.map(v => (
-                <button
-                  key={v.id}
-                  onClick={() => setSelVariant(selVariant?.id === v.id ? null : v)}
-                  style={{
-                    padding: '0.4rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
-                    border: selVariant?.id === v.id ? `2px solid ${GOLD}` : '1.5px solid #e0dbd0',
-                    background: selVariant?.id === v.id ? '#fef9ec' : '#fff',
-                    color: selVariant?.id === v.id ? GOLD : '#111',
-                  }}
-                >
-                  {v.size} / {v.color} <span style={{ color: '#9ca3af', fontWeight: 400 }}>({v.stock})</span>
-                </button>
-              ))}
-            </div>
-
-            {selVariant && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <p style={{ fontSize: '0.8rem', fontWeight: 600 }}>Cantidad:</p>
-                <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 700 }}>−</button>
-                <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '24px', textAlign: 'center' }}>{qty}</span>
-                <button onClick={() => setQty(q => Math.min(selVariant.stock, q + 1))} style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 700 }}>+</button>
+            {/* Contenido */}
+            <div style={{ padding: '1.5rem' }}>
+              {/* Nombre y precio */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', gap: '1rem' }}>
+                <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.375rem', fontWeight: 700, color: '#111', margin: 0 }}>{product.name}</h2>
+                <p style={{ fontWeight: 700, fontSize: '1.375rem', color: GOLD, margin: 0, whiteSpace: 'nowrap' }}>${product.sellingPrice.toLocaleString('es-AR')}</p>
               </div>
-            )}
 
-            <button
-              onClick={handleAdd}
-              disabled={!selVariant}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: '0.625rem', border: 'none', background: selVariant ? '#111' : '#e0dbd0', color: selVariant ? CREAM : '#9ca3af', fontWeight: 700, fontSize: '0.9375rem', cursor: selVariant ? 'pointer' : 'not-allowed' }}
-            >
-              Agregar al carrito — ${selVariant ? (product.sellingPrice * qty).toLocaleString('es-AR') : '—'}
-            </button>
+              {product.description && (
+                <p style={{ fontSize: '0.875rem', color: '#6b7280', lineHeight: 1.6, marginBottom: '1.25rem', margin: '0 0 1.25rem' }}>{product.description}</p>
+              )}
+
+              {/* Variantes */}
+              <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>Talle y color</p>
+              {availVariants.length === 0 ? (
+                <p style={{ fontSize: '0.875rem', color: '#ef4444', fontWeight: 600, marginBottom: '1rem' }}>Sin stock disponible</p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                  {availVariants.map(v => (
+                    <button
+                      key={v.id}
+                      onClick={() => setSelVariant(selVariant?.id === v.id ? null : v)}
+                      style={{
+                        padding: '0.45rem 1rem', borderRadius: '0.625rem', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.12s',
+                        border: selVariant?.id === v.id ? `2px solid ${GOLD}` : '1.5px solid #e0dbd0',
+                        background: selVariant?.id === v.id ? '#fef9ec' : '#faf9f7',
+                        color: selVariant?.id === v.id ? GOLD : '#374151',
+                        boxShadow: selVariant?.id === v.id ? `0 0 0 3px ${GOLD}22` : 'none',
+                      }}
+                    >
+                      {v.size} / {v.color}
+                      <span style={{ color: selVariant?.id === v.id ? '#c9a84c' : '#9ca3af', fontWeight: 400, marginLeft: '0.3rem', fontSize: '0.8rem' }}>({v.stock})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Cantidad */}
+              {selVariant && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', marginBottom: '1.25rem', background: CREAM, borderRadius: '0.75rem', padding: '0.75rem 1rem' }}>
+                  <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', margin: 0, flex: 1 }}>Cantidad</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <button
+                      onClick={() => setQty(q => Math.max(1, q - 1))}
+                      style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >−</button>
+                    <span style={{ fontWeight: 700, fontSize: '1.125rem', minWidth: '28px', textAlign: 'center', color: '#111' }}>{qty}</span>
+                    <button
+                      onClick={() => setQty(q => Math.min(selVariant.stock, q + 1))}
+                      style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >+</button>
+                  </div>
+                </div>
+              )}
+
+              {/* CTA */}
+              <button
+                onClick={handleAdd}
+                disabled={!selVariant || availVariants.length === 0}
+                style={{
+                  width: '100%', padding: '0.875rem', borderRadius: '0.75rem', border: 'none',
+                  background: selVariant ? '#111' : '#e0dbd0',
+                  color: selVariant ? '#fff' : '#9ca3af',
+                  fontWeight: 700, fontSize: '1rem', cursor: selVariant ? 'pointer' : 'not-allowed',
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                {!selVariant
+                  ? 'Seleccioná un talle y color'
+                  : `Agregar al carrito — $${(product.sellingPrice * qty).toLocaleString('es-AR')}`
+                }
+              </button>
+            </div>
           </div>
         </div>
       )}
