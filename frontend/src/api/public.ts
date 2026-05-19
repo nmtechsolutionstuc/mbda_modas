@@ -114,3 +114,14 @@ export function getPublicLanding(): Promise<LandingContent> {
     .get<ApiResponse<LandingContent>>('/public/landing')
     .then(r => r.data.data)
 }
+
+export interface PublicTerms {
+  content: string | null
+  updatedAt: string | null
+}
+
+export function getPublicTerms(): Promise<PublicTerms> {
+  return axiosClient
+    .get<ApiResponse<PublicTerms>>('/public/terms')
+    .then(r => r.data.data)
+}

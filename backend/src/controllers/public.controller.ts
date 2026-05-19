@@ -142,6 +142,18 @@ export const getPublicConfig = asyncHandler(async (_req: Request, res: Response)
   ok(res, config)
 })
 
+// ── Términos y Condiciones públicos ───────────────────────────────────────────
+
+export const getPublicTerms = asyncHandler(async (_req: Request, res: Response) => {
+  const config = await prisma.config.findFirst({
+    select: { termsContent: true, termsUpdatedAt: true },
+  })
+  ok(res, {
+    content: config?.termsContent ?? null,
+    updatedAt: config?.termsUpdatedAt ?? null,
+  })
+})
+
 // ── Landing page content ──────────────────────────────────────────────────────
 
 export const getLandingContent = asyncHandler(async (_req: Request, res: Response) => {

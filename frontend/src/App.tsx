@@ -7,6 +7,7 @@ import { Navbar } from './components/layout/Navbar'
 import { Footer } from './components/layout/Footer'
 import { LandingPage } from './pages/public/LandingPage'
 import { CatalogPage } from './pages/public/CatalogPage'
+import { TermsPage } from './pages/public/TermsPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { PanelDashboard } from './pages/panel/PanelDashboard'
@@ -35,6 +36,7 @@ function App() {
                 {/* Públicas */}
                 <Route path="/"         element={<LandingPage />} />
                 <Route path="/catalogo" element={<CatalogPage />} />
+                <Route path="/terminos" element={<TermsPage />} />
                 <Route path="/login"    element={<LoginPage />} />
                 <Route path="/registro" element={<RegisterPage />} />
 
