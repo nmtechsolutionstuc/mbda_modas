@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { useToast } from '../../context/ToastContext'
 import { isReseller } from '../../types'
 
 interface MenuItem { title: string; desc: string; icon: string; href: string; active: boolean; phase?: string }
@@ -12,6 +13,7 @@ const MENU: MenuItem[] = [
 
 export function PanelDashboard() {
   const { user } = useAuthStore()
+  const { showToast } = useToast()
   const reseller = user && isReseller(user) ? user : null
   const name      = reseller?.firstName ?? 'Revendedor'
   const storeName = reseller?.storeName ?? ''
@@ -52,7 +54,8 @@ export function PanelDashboard() {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(`${window.location.origin}/catalogo?ref=${refCode}`)
-                    .then(() => alert('¡Link copiado!'))
+                    .then(() => showToast('¡Link copiado al portapapeles!', 'success'))
+                    .catch(() => showToast('No se pudo copiar el link', 'error'))
                 }}
                 style={{ background: '#111', color: '#f5f3ef', padding: '0.625rem 1.375rem', borderRadius: '0.625rem', border: 'none', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}
               >

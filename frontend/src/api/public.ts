@@ -86,20 +86,31 @@ export interface CreatedOrder {
   }
 }
 
+// ── Tipo auxiliar para respuestas envueltas del backend ───────────────────────
+type ApiResponse<T> = { success: true; data: T }
+
 // ── API calls ─────────────────────────────────────────────────────────────────
 
-export function getPublicCatalog(refCode: string) {
-  return axiosClient.get<PublicCatalog>(`/public/catalog/${refCode}`).then(r => r.data)
+export function getPublicCatalog(refCode: string): Promise<PublicCatalog> {
+  return axiosClient
+    .get<ApiResponse<PublicCatalog>>(`/public/catalog/${refCode}`)
+    .then(r => r.data.data)
 }
 
-export function getPublicConfig() {
-  return axiosClient.get<PublicConfig>('/public/config').then(r => r.data)
+export function getPublicConfig(): Promise<PublicConfig> {
+  return axiosClient
+    .get<ApiResponse<PublicConfig>>('/public/config')
+    .then(r => r.data.data)
 }
 
-export function createPublicOrder(payload: CreateOrderPayload) {
-  return axiosClient.post<CreatedOrder>('/public/orders', payload).then(r => r.data)
+export function createPublicOrder(payload: CreateOrderPayload): Promise<CreatedOrder> {
+  return axiosClient
+    .post<ApiResponse<CreatedOrder>>('/public/orders', payload)
+    .then(r => r.data.data)
 }
 
-export function getPublicLanding() {
-  return axiosClient.get<LandingContent>('/public/landing').then(r => r.data)
+export function getPublicLanding(): Promise<LandingContent> {
+  return axiosClient
+    .get<ApiResponse<LandingContent>>('/public/landing')
+    .then(r => r.data.data)
 }

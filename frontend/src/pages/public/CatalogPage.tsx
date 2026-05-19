@@ -186,7 +186,7 @@ function Checkout({ cart, refCode, onBack, onSuccess }: {
       const waLink = linkYaTransferi(result.payment.whatsapp, {
         orderNumber: result.order.orderNumber,
         buyerName: form.buyerName,
-        total: result.order.total,
+        total,    // usa el total local calculado del carrito (es un número real)
       })
       onSuccess(result, waLink)
     } catch (e: any) {
