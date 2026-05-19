@@ -1,30 +1,45 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { getPublicLanding, type LandingContent } from '../../api/public'
 
-const STEPS = [
-  {
-    num: '1',
-    title: 'Registrate gratis',
-    desc: 'Creá tu cuenta en minutos. Sin costo, sin compromisos.',
-    emoji: '✏️',
-  },
-  {
-    num: '2',
-    title: 'Armá tu catálogo',
-    desc: 'Elegí productos de MBDA Modas y definí tus precios de venta.',
-    emoji: '🛍️',
-  },
-  {
-    num: '3',
-    title: 'Compartí y vendé',
-    desc: 'Compartí tu link único con tus clientes y recibí pedidos.',
-    emoji: '🚀',
-  },
-]
+// ── Defaults (usados mientras carga o si falla la API) ────────────────────────
+
+const DEFAULTS: LandingContent = {
+  landingHeroTitle:    'Tu tienda, tus precios',
+  landingHeroSubtitle: 'Armá tu catálogo gratis',
+  landingHeroDesc:     'Elegí productos de MBDA Modas, ponele tu precio y vendé a tus clientes.',
+  landingCta1Text:     'Quiero ser revendedor',
+  landingCta2Text:     'Ya tengo cuenta',
+  landingHowTitle:     '¿Cómo funciona?',
+  landingStep1Title:   'Registrate gratis',
+  landingStep1Desc:    'Creá tu cuenta en minutos. Sin costo, sin compromisos.',
+  landingStep2Title:   'Armá tu catálogo',
+  landingStep2Desc:    'Elegí productos de MBDA Modas y definí tus precios de venta.',
+  landingStep3Title:   'Compartí y vendé',
+  landingStep3Desc:    'Compartí tu link único con tus clientes y recibí pedidos.',
+}
+
+const STEP_EMOJIS = ['✏️', '🛍️', '🚀']
 
 export function LandingPage() {
+  const [content, setContent] = useState<LandingContent>(DEFAULTS)
+
+  useEffect(() => {
+    getPublicLanding()
+      .then(c => { if (c) setContent(c) })
+      .catch(() => { /* silencioso — usa defaults */ })
+  }, [])
+
+  const steps = [
+    { title: content.landingStep1Title, desc: content.landingStep1Desc, emoji: STEP_EMOJIS[0]! },
+    { title: content.landingStep2Title, desc: content.landingStep2Desc, emoji: STEP_EMOJIS[1]! },
+    { title: content.landingStep3Title, desc: content.landingStep3Desc, emoji: STEP_EMOJIS[2]! },
+  ]
+
   return (
     <div style={{ background: '#f5f3ef', minHeight: 'calc(100vh - 60px)' }}>
-      {/* ── Hero ──────────────────────────────────────────── */}
+
+      {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section
         style={{
           background: 'linear-gradient(135deg, #111 0%, #2a2016 100%)',
@@ -39,12 +54,8 @@ export function LandingPage() {
         <div
           aria-hidden
           style={{
-            position: 'absolute',
-            top: '-60px',
-            right: '-60px',
-            width: '280px',
-            height: '280px',
-            borderRadius: '50%',
+            position: 'absolute', top: '-60px', right: '-60px',
+            width: '280px', height: '280px', borderRadius: '50%',
             background: 'radial-gradient(circle, rgba(184,146,42,0.15) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
@@ -65,8 +76,13 @@ export function LandingPage() {
             margin: '0 auto 1.25rem',
           }}
         >
-          Tu tienda,{' '}
-          <em style={{ color: '#b8922a', fontStyle: 'italic' }}>tus precios</em>
+          {content.landingHeroTitle.split(',').length >= 2
+            ? <>
+                {content.landingHeroTitle.split(',')[0]},{' '}
+                <em style={{ color: '#b8922a', fontStyle: 'italic' }}>{content.landingHeroTitle.split(',').slice(1).join(',').trim()}</em>
+              </>
+            : content.landingHeroTitle
+          }
         </h1>
 
         <p
@@ -78,8 +94,7 @@ export function LandingPage() {
             lineHeight: 1.65,
           }}
         >
-          Elegí productos de MBDA Modas, poneles tu precio y vendé a tus clientes.
-          Armá tu catálogo gratis en minutos.
+          {content.landingHeroDesc}
         </p>
 
         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -93,11 +108,10 @@ export function LandingPage() {
               fontWeight: 700,
               fontSize: '1rem',
               textDecoration: 'none',
-              transition: 'opacity 0.15s',
               boxShadow: '0 4px 16px rgba(184,146,42,0.35)',
             }}
           >
-            Quiero ser revendedor
+            {content.landingCta1Text}
           </Link>
           <Link
             to="/login"
@@ -110,15 +124,14 @@ export function LandingPage() {
               fontSize: '1rem',
               textDecoration: 'none',
               border: '1px solid rgba(255,255,255,0.15)',
-              transition: 'background 0.15s',
             }}
           >
-            Ya tengo cuenta
+            {content.landingCta2Text}
           </Link>
         </div>
       </section>
 
-      {/* ── Cómo funciona ─────────────────────────────────── */}
+      {/* ── Cómo funciona ─────────────────────────────────────────────────── */}
       <section style={{ padding: 'clamp(3rem, 8vw, 5rem) 1.5rem', maxWidth: '960px', margin: '0 auto' }}>
         <h2
           style={{
@@ -130,19 +143,13 @@ export function LandingPage() {
             marginBottom: '3rem',
           }}
         >
-          ¿Cómo funciona?
+          {content.landingHowTitle}
         </h2>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '1.5rem',
-          }}
-        >
-          {STEPS.map(step => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+          {steps.map((step, idx) => (
             <div
-              key={step.num}
+              key={idx}
               style={{
                 background: '#fff',
                 borderRadius: '1.25rem',
@@ -175,7 +182,7 @@ export function LandingPage() {
                   border: '1px solid #e8e3d5',
                 }}
               >
-                Paso {step.num}
+                Paso {idx + 1}
               </div>
               <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: 700, color: '#111', marginBottom: '0.5rem' }}>
                 {step.title}
@@ -186,7 +193,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── CTA final ─────────────────────────────────────── */}
+      {/* ── CTA final ─────────────────────────────────────────────────────── */}
       <section
         style={{
           background: 'linear-gradient(135deg, #b8922a 0%, #8f6e1e 100%)',

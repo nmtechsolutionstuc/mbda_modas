@@ -97,6 +97,48 @@ export function linkPedidoDespachado(
   return waLink(buyerPhone, msg)
 }
 
+/** Admin rechaza comprobante de pago → notifica al revendedor */
+export function linkPagoRechazado(
+  resellerPhone: string,
+  opts: {
+    orderNumber: string
+    storeName: string
+    reason: string
+  },
+) {
+  const msg = [
+    `❌ *Comprobante rechazado — ${opts.orderNumber}*`,
+    ``,
+    `Hola ${opts.storeName}. Revisamos el comprobante de pago pero no pudimos verificarlo.`,
+    ``,
+    `Motivo: ${opts.reason}`,
+    ``,
+    `El pedido fue cancelado y el stock liberado. Si hay algún error, comunicate con nosotros.`,
+  ].join('\n')
+  return waLink(resellerPhone, msg)
+}
+
+/** Admin cancela pedido → notifica al revendedor */
+export function linkPedidoCancelado(
+  resellerPhone: string,
+  opts: {
+    orderNumber: string
+    storeName: string
+    reason: string
+  },
+) {
+  const msg = [
+    `🚫 *Pedido cancelado — ${opts.orderNumber}*`,
+    ``,
+    `Hola ${opts.storeName}. El pedido fue cancelado.`,
+    ``,
+    `Motivo: ${opts.reason}`,
+    ``,
+    `Si el comprador ya había transferido, coordinen la devolución. Ante cualquier consulta respondé este mensaje.`,
+  ].join('\n')
+  return waLink(resellerPhone, msg)
+}
+
 /** Comprador → MBDA: "ya transferí" */
 export function linkYaTransferi(
   mbdaPhone: string,

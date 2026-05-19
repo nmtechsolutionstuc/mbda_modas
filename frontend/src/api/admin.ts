@@ -262,8 +262,23 @@ export async function dispatchOrder(id: string, trackingNumber: string): Promise
   return data.data
 }
 
-export async function cancelAdminOrder(id: string, cancelReason: string): Promise<Order> {
-  const { data } = await axiosClient.patch<{ success: true; data: Order }>(`/admin/orders/${id}/cancel`, { cancelReason })
+export async function cancelAdminOrder(id: string, cancelReason: string): Promise<{ order: Order; waLink: string | null }> {
+  const { data } = await axiosClient.patch<{ success: true; data: { order: Order; waLink: string | null } }>(`/admin/orders/${id}/cancel`, { cancelReason })
+  return data.data
+}
+
+export async function markOrderProofReceived(id: string): Promise<Order> {
+  const { data } = await axiosClient.patch<{ success: true; data: Order }>(`/admin/orders/${id}/mark-proof`)
+  return data.data
+}
+
+export async function rejectOrderPayment(id: string, cancelReason: string): Promise<{ order: Order; waLink: string | null }> {
+  const { data } = await axiosClient.patch<{ success: true; data: { order: Order; waLink: string | null } }>(`/admin/orders/${id}/reject`, { cancelReason })
+  return data.data
+}
+
+export async function cancelSingleItem(orderId: string, itemId: string): Promise<Order> {
+  const { data } = await axiosClient.patch<{ success: true; data: Order }>(`/admin/orders/${orderId}/items/${itemId}/cancel`)
   return data.data
 }
 

@@ -22,6 +22,7 @@ import {
 import {
   getOrders, getOrderById, confirmOrderPayment,
   dispatchOrderAction, cancelOrderAction,
+  markProofAction, rejectPaymentAction, cancelItemAction,
   listCommissions, markCommissionPaid,
 } from '../controllers/admin.order.controller'
 import {
@@ -61,11 +62,14 @@ router.patch('/config',      adminOnly, asyncHandler(updateConfig))
 router.get('/config/audit',  adminOnly, asyncHandler(getConfigAudit))
 
 // ── Pedidos (solo ADMIN) ──────────────────────────────────────────────────────
-router.get('/orders',                    adminOnly, getOrders)
-router.get('/orders/:id',                adminOnly, getOrderById)
-router.patch('/orders/:id/confirm',      adminOnly, confirmOrderPayment)
-router.patch('/orders/:id/dispatch',     adminOnly, dispatchOrderAction)
-router.patch('/orders/:id/cancel',       adminOnly, cancelOrderAction)
+router.get('/orders',                           adminOnly, getOrders)
+router.get('/orders/:id',                       adminOnly, getOrderById)
+router.patch('/orders/:id/confirm',             adminOnly, confirmOrderPayment)
+router.patch('/orders/:id/mark-proof',          adminOnly, markProofAction)
+router.patch('/orders/:id/reject',              adminOnly, rejectPaymentAction)
+router.patch('/orders/:id/dispatch',            adminOnly, dispatchOrderAction)
+router.patch('/orders/:id/cancel',              adminOnly, cancelOrderAction)
+router.patch('/orders/:id/items/:itemId/cancel', adminOnly, cancelItemAction)
 
 // ── Comisiones (solo ADMIN) ───────────────────────────────────────────────────
 router.get('/commissions',                 adminOnly, listCommissions)

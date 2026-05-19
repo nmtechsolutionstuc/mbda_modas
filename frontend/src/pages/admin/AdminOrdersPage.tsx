@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getAdminOrders, confirmOrderPayment, dispatchOrder, cancelAdminOrder,
+  markOrderProofReceived, rejectOrderPayment, cancelSingleItem,
   type Order, type OrderStatus,
 } from '../../api/admin'
 import { useToast } from '../../context/ToastContext'
@@ -64,8 +65,10 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
   const { showToast } = useToast()
   const [trackingInput, setTrackingInput] = useState(order.trackingNumber ?? '')
   const [cancelReason, setCancelReason] = useState('')
+  const [rejectReason, setRejectReason] = useState('')
   const [loading, setLoading] = useState(false)
-  const [view, setView] = useState<'detail' | 'dispatch' | 'cancel'>('detail')
+  const [view, setView] = useState<'detail' | 'dispatch' | 'cancel' | 'reject'>('detail')
+  const [cancelingItemId, setCancelingItemId] = useState<string | null>(null)
 
   async function handleConfirm() {
     setLoading(true)
@@ -99,6 +102,39 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
     }
   }
 
+  async function handleMarkProof() {
+    setLoading(true)
+    try {
+      await markOrderProofReceived(order.id)
+      showToast('Comprobante marcado como recibido', 'success')
+      onRefresh()
+      onClose()
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleReject() {
+    if (!rejectReason.trim()) {
+      showToast('Indicá el motivo del rechazo', 'error')
+      return
+    }
+    setLoading(true)
+    try {
+      const result = await rejectOrderPayment(order.id, rejectReason.trim())
+      showToast('Pago rechazado. Pedido cancelado.', 'success')
+      if (result.waLink) window.open(result.waLink, '_blank')
+      onRefresh()
+      onClose()
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error al rechazar', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleCancel() {
     if (!cancelReason.trim()) {
       showToast('Indicá el motivo de cancelación', 'error')
@@ -106,14 +142,29 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
     }
     setLoading(true)
     try {
-      await cancelAdminOrder(order.id, cancelReason.trim())
+      const result = await cancelAdminOrder(order.id, cancelReason.trim())
       showToast('Pedido cancelado', 'success')
+      if (result.waLink) window.open(result.waLink, '_blank')
       onRefresh()
       onClose()
     } catch (e: any) {
-      showToast(e.response?.data?.message ?? 'Error al cancelar', 'error')
+      showToast(e.response?.data?.error?.message ?? 'Error al cancelar', 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleCancelItem(itemId: string) {
+    setCancelingItemId(itemId)
+    try {
+      await cancelSingleItem(order.id, itemId)
+      showToast('Ítem cancelado. Total recalculado.', 'success')
+      onRefresh()
+      onClose()
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error al cancelar ítem', 'error')
+    } finally {
+      setCancelingItemId(null)
     }
   }
 
@@ -166,7 +217,7 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #e0dbd0' }}>
-                  {['Producto', 'Talle/Color', 'Cant.', 'P. Unit.', 'Subtotal'].map(h => (
+                  {['Producto', 'Talle/Color', 'Cant.', 'P. Unit.', 'Subtotal', ''].map(h => (
                     <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.25rem', color: '#6b7280', fontWeight: 600 }}>{h}</th>
                   ))}
                 </tr>
@@ -174,17 +225,29 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
               <tbody>
                 {order.items.map(item => (
                   <tr key={item.id} style={{ borderBottom: '1px solid #f5f3ef', opacity: item.cancelled ? 0.4 : 1 }}>
-                    <td style={{ padding: '0.5rem 0.25rem' }}>{item.productName}{item.cancelled && ' (cancelado)'}</td>
+                    <td style={{ padding: '0.5rem 0.25rem' }}>{item.productName}{item.cancelled && <span style={{ fontSize: '0.7rem', color: '#ef4444', marginLeft: '0.25rem' }}>(cancelado)</span>}</td>
                     <td style={{ padding: '0.5rem 0.25rem', color: '#6b7280' }}>{item.size} / {item.color}</td>
                     <td style={{ padding: '0.5rem 0.25rem' }}>{item.quantity}</td>
                     <td style={{ padding: '0.5rem 0.25rem' }}>{fmt(item.unitPrice)}</td>
                     <td style={{ padding: '0.5rem 0.25rem', fontWeight: 600 }}>{fmt(item.subtotal)}</td>
+                    <td style={{ padding: '0.5rem 0.25rem' }}>
+                      {!item.cancelled && order.status !== 'DISPATCHED' && order.status !== 'CANCELLED' && (
+                        <button
+                          onClick={() => handleCancelItem(item.id)}
+                          disabled={cancelingItemId === item.id}
+                          title="Cancelar este ítem"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.75rem', fontWeight: 600, padding: '0.15rem 0.4rem', borderRadius: '0.25rem' }}
+                        >
+                          {cancelingItemId === item.id ? '...' : '✕'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4} style={{ padding: '0.75rem 0.25rem', textAlign: 'right', fontWeight: 700 }}>Total:</td>
+                  <td colSpan={5} style={{ padding: '0.75rem 0.25rem', textAlign: 'right', fontWeight: 700 }}>Total:</td>
                   <td style={{ padding: '0.75rem 0.25rem', fontWeight: 700, color: '#b8922a' }}>{fmt(order.total)}</td>
                 </tr>
               </tfoot>
@@ -210,7 +273,18 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
           {/* Acciones */}
           {view === 'detail' && (
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
-              {(order.status === 'PENDING' || order.status === 'PROOF_RECEIVED') && (
+              {order.status === 'PENDING' && (
+                <>
+                  <ActionBtn onClick={handleMarkProof} loading={loading} color="#3b82f6">
+                    📎 Marcar comprobante recibido
+                  </ActionBtn>
+                  <ActionBtn onClick={handleConfirm} loading={loading} color="#10b981">
+                    ✅ Confirmar pago
+                  </ActionBtn>
+                  <ActionBtn onClick={() => setView('cancel')} color="#ef4444" outline>Cancelar pedido</ActionBtn>
+                </>
+              )}
+              {order.status === 'PROOF_RECEIVED' && (
                 <>
                   <ActionBtn onClick={handleConfirm} loading={loading} color="#10b981">
                     ✅ Confirmar pago
@@ -218,6 +292,9 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
                   <a href={waConfirmLink} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
                     <ActionBtn onClick={() => {}} color="#25d366">📱 Avisar al revendedor</ActionBtn>
                   </a>
+                  <ActionBtn onClick={() => setView('reject')} color="#f59e0b" outline>
+                    ❌ Rechazar comprobante
+                  </ActionBtn>
                   <ActionBtn onClick={() => setView('cancel')} color="#ef4444" outline>Cancelar pedido</ActionBtn>
                 </>
               )}
@@ -259,6 +336,9 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
           {view === 'cancel' && (
             <div style={{ marginTop: '1.5rem', padding: '1.25rem', background: '#fef2f2', borderRadius: '0.75rem', border: '1px solid #fecaca' }}>
               <h3 style={{ fontWeight: 700, marginBottom: '0.75rem', color: '#ef4444' }}>Cancelar pedido</h3>
+              <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                Se liberará el stock y se enviará un link de WhatsApp para notificar al revendedor.
+              </p>
               <textarea
                 value={cancelReason}
                 onChange={e => setCancelReason(e.target.value)}
@@ -268,6 +348,27 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
               />
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <ActionBtn onClick={handleCancel} loading={loading} color="#ef4444">Confirmar cancelación</ActionBtn>
+                <ActionBtn onClick={() => setView('detail')} color="#6b7280" outline>Volver</ActionBtn>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-vista: rechazar comprobante */}
+          {view === 'reject' && (
+            <div style={{ marginTop: '1.5rem', padding: '1.25rem', background: '#fffbeb', borderRadius: '0.75rem', border: '1px solid #fcd34d' }}>
+              <h3 style={{ fontWeight: 700, marginBottom: '0.75rem', color: '#d97706' }}>❌ Rechazar comprobante de pago</h3>
+              <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                El pedido se cancelará, el stock se liberará y se abrirá un link de WhatsApp para notificar al revendedor.
+              </p>
+              <textarea
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="Motivo del rechazo (ej: el monto no coincide, comprobante ilegible...)"
+                rows={3}
+                style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid #fcd34d', borderRadius: '0.5rem', fontSize: '0.9rem', marginBottom: '0.75rem', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <ActionBtn onClick={handleReject} loading={loading} color="#d97706">Rechazar y cancelar</ActionBtn>
                 <ActionBtn onClick={() => setView('detail')} color="#6b7280" outline>Volver</ActionBtn>
               </div>
             </div>

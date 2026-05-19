@@ -252,6 +252,87 @@ export async function dispatchOrder(orderId: string, trackingNumber: string) {
   })
 }
 
+/** Marca el pedido como PROOF_RECEIVED (el comprador envió comprobante) */
+export async function markProofReceived(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId } })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status !== 'PENDING') {
+    throw Object.assign(new Error('Solo se puede marcar comprobante en pedidos pendientes'), { status: 400 })
+  }
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { status: 'PROOF_RECEIVED' },
+    include: { reseller: true, items: true },
+  })
+}
+
+/** Rechaza el comprobante de pago → cancela el pedido y devuelve stock */
+export async function rejectPayment(orderId: string, cancelReason: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status !== 'PENDING' && order.status !== 'PROOF_RECEIVED') {
+    throw Object.assign(new Error('Solo se puede rechazar en pedidos pendientes o con comprobante'), { status: 400 })
+  }
+
+  return await prisma.$transaction(async tx => {
+    for (const item of order.items.filter(i => !i.cancelled)) {
+      await tx.productVariant.update({
+        where: { id: item.variantId },
+        data: { stock: { increment: item.quantity } },
+      })
+    }
+    return tx.order.update({
+      where: { id: orderId },
+      data: { status: 'CANCELLED', cancelReason },
+      include: { reseller: true, items: true },
+    })
+  })
+}
+
+/** Cancela un ítem individual y recalcula el total del pedido */
+export async function cancelOrderItem(orderId: string, itemId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status === 'DISPATCHED' || order.status === 'CANCELLED') {
+    throw Object.assign(new Error('No se puede modificar este pedido'), { status: 400 })
+  }
+
+  const item = order.items.find(i => i.id === itemId)
+  if (!item) throw Object.assign(new Error('Ítem no encontrado'), { status: 404 })
+  if (item.cancelled) throw Object.assign(new Error('El ítem ya estaba cancelado'), { status: 400 })
+
+  const activeItems = order.items.filter(i => !i.cancelled && i.id !== itemId)
+  if (activeItems.length === 0) {
+    throw Object.assign(new Error('No se puede cancelar el último ítem activo. Cancelá el pedido completo.'), { status: 400 })
+  }
+
+  return await prisma.$transaction(async tx => {
+    // Devolver stock si el pedido no estaba CONFIRMED
+    if (order.status === 'PENDING' || order.status === 'PROOF_RECEIVED') {
+      await tx.productVariant.update({
+        where: { id: item.variantId },
+        data: { stock: { increment: item.quantity } },
+      })
+    }
+
+    await tx.orderItem.update({ where: { id: itemId }, data: { cancelled: true } })
+
+    // Recalcular totales con los ítems activos
+    const newSubtotal = activeItems.reduce((sum, i) => sum + Number(i.subtotal), 0)
+    return tx.order.update({
+      where: { id: orderId },
+      data: { subtotal: newSubtotal, total: newSubtotal },
+      include: { reseller: true, items: true, commissions: true },
+    })
+  })
+}
+
 export async function cancelOrder(orderId: string, cancelReason: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },

@@ -41,6 +41,21 @@ export interface PublicConfig {
   dispatchDays: number
 }
 
+export interface LandingContent {
+  landingHeroTitle: string
+  landingHeroSubtitle: string
+  landingHeroDesc: string
+  landingCta1Text: string
+  landingCta2Text: string
+  landingHowTitle: string
+  landingStep1Title: string
+  landingStep1Desc: string
+  landingStep2Title: string
+  landingStep2Desc: string
+  landingStep3Title: string
+  landingStep3Desc: string
+}
+
 export interface CreateOrderPayload {
   refCode: string
   buyerName: string
@@ -83,4 +98,8 @@ export function getPublicConfig() {
 
 export function createPublicOrder(payload: CreateOrderPayload) {
   return axiosClient.post<CreatedOrder>('/public/orders', payload).then(r => r.data)
+}
+
+export function getPublicLanding() {
+  return axiosClient.get<LandingContent>('/public/landing').then(r => r.data)
 }

@@ -4,9 +4,11 @@ import { ok } from '../utils/apiResponse'
 import { asyncHandler } from '../utils/asyncHandler'
 import {
   listOrders, getOrder, confirmOrder, dispatchOrder, cancelOrder,
+  markProofReceived, rejectPayment, cancelOrderItem,
 } from '../services/order.service'
 import {
   linkPagoConfirmado, linkPedidoDespachado,
+  linkPagoRechazado, linkPedidoCancelado,
 } from '../services/whatsapp.service'
 import { prisma } from '../config/prisma'
 
@@ -66,6 +68,42 @@ export const dispatchOrderAction = asyncHandler(async (req: Request, res: Respon
 export const cancelOrderAction = asyncHandler(async (req: Request, res: Response) => {
   const { cancelReason } = z.object({ cancelReason: z.string().min(3).max(300) }).parse(req.body)
   const order = await cancelOrder(req.params.id, cancelReason)
+
+  let waLink: string | null = null
+  if (order.reseller?.whatsapp) {
+    waLink = linkPedidoCancelado(order.reseller.whatsapp, {
+      orderNumber: order.orderNumber,
+      storeName: order.reseller.storeName,
+      reason: cancelReason,
+    })
+  }
+
+  ok(res, { order, waLink })
+})
+
+export const markProofAction = asyncHandler(async (req: Request, res: Response) => {
+  const order = await markProofReceived(req.params.id)
+  ok(res, order)
+})
+
+export const rejectPaymentAction = asyncHandler(async (req: Request, res: Response) => {
+  const { cancelReason } = z.object({ cancelReason: z.string().min(3).max(300) }).parse(req.body)
+  const order = await rejectPayment(req.params.id, cancelReason)
+
+  let waLink: string | null = null
+  if (order.reseller?.whatsapp) {
+    waLink = linkPagoRechazado(order.reseller.whatsapp, {
+      orderNumber: order.orderNumber,
+      storeName: order.reseller.storeName,
+      reason: cancelReason,
+    })
+  }
+
+  ok(res, { order, waLink })
+})
+
+export const cancelItemAction = asyncHandler(async (req: Request, res: Response) => {
+  const order = await cancelOrderItem(req.params.id, req.params.itemId)
   ok(res, order)
 })
 
