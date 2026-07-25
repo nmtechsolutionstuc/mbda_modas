@@ -28,6 +28,9 @@ export interface Product {
   category: { id: string; name: string }
   kind: 'PHYSICAL' | 'SERVICE' | 'DIGITAL'
   weightGrams: number | null
+  dimH: string | null
+  dimW: string | null
+  dimL: string | null
   isActive: boolean
   variants: ProductVariant[]
   _count?: { catalogItems: number }
@@ -72,8 +75,8 @@ export interface Config {
   stockReserveHours: number
   defaultWeightGrams: number | null
   defaultCommissionPct: string | null
-  correoApiKey: string | null
-  andreaniApiKey: string | null
+  zipnovaDiscountPctHome: string
+  zipnovaDiscountPctBranch: string
   termsContent: string | null
   termsUpdatedAt: string | null
   landingHeroTitle: string
@@ -218,6 +221,8 @@ export interface Order {
   shippingCity: string | null
   shippingProvince: string | null
   shippingZip: string | null
+  shippingQuoteData: string | null
+  buyerNote: string | null
   subtotal: string
   total: string
   status: OrderStatus
@@ -280,6 +285,18 @@ export async function rejectOrderPayment(id: string, cancelReason: string): Prom
 export async function cancelSingleItem(orderId: string, itemId: string): Promise<Order> {
   const { data } = await axiosClient.patch<{ success: true; data: Order }>(`/admin/orders/${orderId}/items/${itemId}/cancel`)
   return data.data
+}
+
+/**
+ * Descarga la etiqueta PDF de Zipnova para el pedido.
+ * Retorna un Blob + el trackingNumber si vino en el header X-Tracking-Number.
+ */
+export async function downloadShippingLabel(orderId: string): Promise<{ blob: Blob; trackingNumber: string | null }> {
+  const response = await axiosClient.get(`/admin/orders/${orderId}/label`, {
+    responseType: 'blob',
+  })
+  const trackingNumber = response.headers['x-tracking-number'] as string | undefined
+  return { blob: response.data as Blob, trackingNumber: trackingNumber ?? null }
 }
 
 // ── Comisiones ────────────────────────────────────────────────────────────────

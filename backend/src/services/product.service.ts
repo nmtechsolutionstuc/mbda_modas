@@ -16,6 +16,9 @@ export interface CreateProductInput {
   categoryId: string
   kind?: 'PHYSICAL' | 'SERVICE' | 'DIGITAL'
   weightGrams?: number
+  dimH?: number
+  dimW?: number
+  dimL?: number
   variants: VariantInput[]
   photos?: string[]
 }
@@ -28,6 +31,9 @@ export interface UpdateProductInput {
   categoryId?: string
   kind?: 'PHYSICAL' | 'SERVICE' | 'DIGITAL'
   weightGrams?: number | null
+  dimH?: number | null
+  dimW?: number | null
+  dimL?: number | null
   isActive?: boolean
   variants?: VariantInput[]
   addPhotos?: string[]
@@ -77,10 +83,13 @@ export async function createProduct(data: CreateProductInput) {
         description: data.description,
         basePrice: data.basePrice,
         commissionPct: data.commissionPct,
-        categoryId: data.categoryId,
-        kind: data.kind ?? 'PHYSICAL',
-        weightGrams: data.weightGrams,
-        photos: data.photos ?? [],
+        categoryId:   data.categoryId,
+        kind:         data.kind ?? 'PHYSICAL',
+        weightGrams:  data.weightGrams,
+        dimH:         data.dimH,
+        dimW:         data.dimW,
+        dimL:         data.dimL,
+        photos:       data.photos ?? [],
       },
     })
 
@@ -131,23 +140,53 @@ export async function updateProduct(id: string, data: UpdateProductInput) {
         ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
         ...(data.kind !== undefined && { kind: data.kind }),
         ...(data.weightGrams !== undefined && { weightGrams: data.weightGrams }),
-        ...(data.isActive !== undefined && { isActive: data.isActive }),
+        ...(data.dimH       !== undefined && { dimH: data.dimH }),
+        ...(data.dimW       !== undefined && { dimW: data.dimW }),
+        ...(data.dimL       !== undefined && { dimL: data.dimL }),
+        ...(data.isActive   !== undefined && { isActive: data.isActive }),
         photos,
       },
     })
 
-    // Reemplazar variantes si se envían
+    // Upsert inteligente de variantes
     if (data.variants) {
-      await tx.productVariant.deleteMany({ where: { productId: id } })
-      if (data.variants.length > 0) {
+      const existing = await tx.productVariant.findMany({
+        where: { productId: id },
+        select: { id: true },
+      })
+      const existingIds = new Set(existing.map(v => v.id))
+      const incomingIds = new Set(data.variants.filter(v => v.id).map(v => v.id!))
+
+      // 1. Actualizar variantes que ya existen (tienen id)
+      for (const v of data.variants) {
+        if (v.id && existingIds.has(v.id)) {
+          await tx.productVariant.update({
+            where: { id: v.id },
+            data: { size: v.size, color: v.color, stock: v.stock },
+          })
+        }
+      }
+
+      // 2. Crear variantes nuevas (sin id)
+      const newVariants = data.variants.filter(v => !v.id)
+      if (newVariants.length > 0) {
         await tx.productVariant.createMany({
-          data: data.variants.map(v => ({
-            productId: id,
-            size: v.size,
-            color: v.color,
-            stock: v.stock,
+          data: newVariants.map(v => ({
+            productId: id, size: v.size, color: v.color, stock: v.stock,
           })),
         })
+      }
+
+      // 3. Variantes que se eliminaron del formulario
+      const toRemove = [...existingIds].filter(vid => !incomingIds.has(vid))
+      for (const vid of toRemove) {
+        const hasOrders = await tx.orderItem.count({ where: { variantId: vid } })
+        if (hasOrders > 0) {
+          // Tiene pedidos → no se puede borrar, ponemos stock 0
+          await tx.productVariant.update({ where: { id: vid }, data: { stock: 0 } })
+        } else {
+          await tx.productVariant.delete({ where: { id: vid } })
+        }
       }
     }
 

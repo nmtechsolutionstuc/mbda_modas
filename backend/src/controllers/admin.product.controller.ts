@@ -16,6 +16,7 @@ import { ok, created, notFound, badRequest } from '../utils/apiResponse'
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const VariantSchema = z.object({
+  id: z.string().optional(),
   size: z.string().min(1),
   color: z.string().min(1),
   stock: z.coerce.number().int().min(0),
@@ -29,6 +30,9 @@ const CreateProductSchema = z.object({
   categoryId: z.string().uuid('categoryId inválido'),
   kind: z.enum(['PHYSICAL', 'SERVICE', 'DIGITAL']).default('PHYSICAL'),
   weightGrams: z.coerce.number().int().positive().optional(),
+  dimH: z.coerce.number().positive().optional(),
+  dimW: z.coerce.number().positive().optional(),
+  dimL: z.coerce.number().positive().optional(),
   variants: z.preprocess(
     v => (typeof v === 'string' ? JSON.parse(v) : v),
     z.array(VariantSchema).min(1, 'Debe tener al menos una variante'),
@@ -43,6 +47,9 @@ const UpdateProductSchema = z.object({
   categoryId: z.string().uuid().optional(),
   kind: z.enum(['PHYSICAL', 'SERVICE', 'DIGITAL']).optional(),
   weightGrams: z.coerce.number().int().positive().optional().nullable(),
+  dimH: z.coerce.number().positive().optional().nullable(),
+  dimW: z.coerce.number().positive().optional().nullable(),
+  dimL: z.coerce.number().positive().optional().nullable(),
   isActive: z.preprocess(v => v === 'true' || v === true, z.boolean()).optional(),
   variants: z.preprocess(
     v => (typeof v === 'string' ? JSON.parse(v) : v),

@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { getPublicCatalog, createPublicOrder, getPublicConfig, type PublicProduct, type PublicVariant, type CreatedOrder } from '../../api/public'
+import {
+  getPublicCatalog, createPublicOrder, getPublicConfig,
+  type PublicProduct, type PublicConfig, type PublicVariant, type CreatedOrder, type ZipnovaQuote,
+} from '../../api/public'
 import { linkYaTransferi } from '../../utils/whatsapp'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -229,9 +232,40 @@ function ProductCard({ product, cart, onAdd }: {
   )
 }
 
+// ── Provincias argentinas (Georef IDs) ────────────────────────────────────────
+const AR_PROVINCES = [
+  { id: '02', name: 'Ciudad Autónoma de Buenos Aires' },
+  { id: '06', name: 'Buenos Aires' },
+  { id: '10', name: 'Catamarca' },
+  { id: '14', name: 'Córdoba' },
+  { id: '18', name: 'Corrientes' },
+  { id: '22', name: 'Chaco' },
+  { id: '26', name: 'Chubut' },
+  { id: '30', name: 'Entre Ríos' },
+  { id: '34', name: 'Formosa' },
+  { id: '38', name: 'Jujuy' },
+  { id: '42', name: 'La Pampa' },
+  { id: '46', name: 'La Rioja' },
+  { id: '50', name: 'Mendoza' },
+  { id: '54', name: 'Misiones' },
+  { id: '58', name: 'Neuquén' },
+  { id: '62', name: 'Río Negro' },
+  { id: '66', name: 'Salta' },
+  { id: '70', name: 'San Juan' },
+  { id: '74', name: 'San Luis' },
+  { id: '78', name: 'Santa Cruz' },
+  { id: '82', name: 'Santa Fe' },
+  { id: '86', name: 'Santiago del Estero' },
+  { id: '90', name: 'Tucumán' },
+  { id: '94', name: 'Tierra del Fuego' },
+]
+
+const GEOREF = 'https://apis.datos.gob.ar/georef/api'
+
 // ── Checkout inline ───────────────────────────────────────────────────────────
-function Checkout({ cart, refCode, onBack, onSuccess }: {
+function Checkout({ cart, products, refCode, onBack, onSuccess }: {
   cart: CartItem[]
+  products: PublicProduct[]
   refCode: string
   onBack: () => void
   onSuccess: (result: CreatedOrder, waLink: string) => void
@@ -239,24 +273,225 @@ function Checkout({ cart, refCode, onBack, onSuccess }: {
   const [step, setStep] = useState<1 | 2>(1)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [config, setConfig] = useState<{ cbu: string; alias: string; whatsapp: string } | null>(null)
+  const [config, setConfig] = useState<PublicConfig | null>(null)
+
+  // Cargar config al montar (necesaria para defaults de peso/dims en cotización)
+  useEffect(() => {
+    getPublicConfig().then(setConfig).catch(() => {/* silencioso */})
+  }, []) // eslint-disable-line
+
+  // Cotización Zipnova
+  const [quotes, setQuotes] = useState<ZipnovaQuote[]>([])
+  const [quotesLoading, setQuotesLoading] = useState(false)
+  const [quotesFallback, setQuotesFallback] = useState<string | null>(null)
+  const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Autocomplete — Georef Argentina
+  const [selectedProvinceId, setSelectedProvinceId] = useState('')
+  const [citySuggestions, setCitySuggestions] = useState<string[]>([])
+  const [cityLoading, setCityLoading] = useState(false)
+  const [cityOpen, setCityOpen] = useState(false)
+  const cityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [addressSuggestions, setAddressSuggestions] = useState<string[]>([])
+  const [addressLoading, setAddressLoading] = useState(false)
+  const [addressOpen, setAddressOpen] = useState(false)
+  const addressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [form, setForm] = useState({
     buyerName: '', buyerWhatsapp: '', buyerEmail: '',
-    shippingMethod: 'LOCAL_PICKUP' as 'LOCAL_PICKUP' | 'CORREO_ARGENTINO' | 'ANDREANI',
+    shippingType: 'LOCAL_PICKUP' as 'LOCAL_PICKUP' | 'DOMICILIO',
+    deliveryMode: 'home' as 'home' | 'branch',   // solo aplica cuando shippingType === 'DOMICILIO'
     shippingAddress: '', shippingCity: '', shippingProvince: '', shippingZip: '',
+    buyerNote: '',
   })
 
-  const total = cart.reduce((a, i) => a + i.unitPrice * i.quantity, 0)
+  // Total a transferir = solo productos. El envío se confirma por WhatsApp.
+  const productTotal = cart.reduce((a, i) => a + i.unitPrice * i.quantity, 0)
+  const isDomicilio  = form.shippingType === 'DOMICILIO'
+  const isBranch     = isDomicilio && form.deliveryMode === 'branch'
+
+  // Filtra quotes según el modo elegido:
+  // - sucursal  → serviceType === 'pickup_point'
+  // - domicilio → cualquier otro (standard_delivery, express_delivery, etc.)
+  // Si no hay quotes del tipo exacto, cae al más barato global como fallback
+  const cheapestQuote = (() => {
+    if (!quotes.length) return null
+    if (isBranch) {
+      const filtered = quotes.filter(q => q.serviceType === 'pickup_point')
+      return filtered.length > 0 ? filtered[0] : quotes[0]
+    } else {
+      const filtered = quotes.filter(q => q.serviceType !== 'pickup_point')
+      return filtered.length > 0 ? filtered[0] : quotes[0]
+    }
+  })()
+
+  // ── Helpers de dimensiones ────────────────────────────────────────────────
+  // Mapa productId → producto para acceder a peso y dims del carrito
+  const productMap = new Map(products.map(p => [p.productId, p]))
+
+  function calcShippingDims() {
+    // Fallbacks del admin, luego hardcodeados
+    const defWeight = config?.defaultWeightGrams ?? 500
+    const defH      = config?.defaultDimH        ?? 10
+    const defW      = config?.defaultDimW        ?? 15
+    const defL      = config?.defaultDimL        ?? 20
+
+    let totalWeight = 0
+    let maxH = defH, maxW = defW, maxL = defL
+
+    for (const item of cart) {
+      const prod = productMap.get(item.productId)
+      totalWeight += (prod?.weightGrams ?? defWeight) * item.quantity
+      if (prod?.dimH && prod.dimH > maxH) maxH = prod.dimH
+      if (prod?.dimW && prod.dimW > maxW) maxW = prod.dimW
+      if (prod?.dimL && prod.dimL > maxL) maxL = prod.dimL
+    }
+
+    return { totalWeight: Math.max(1, Math.round(totalWeight)), dimH: maxH, dimW: maxW, dimL: maxL }
+  }
+
+  // ── Cotización Zipnova (debounce 600ms al cambiar zip) ────────────────────
+  function triggerQuote(zip: string) {
+    if (quoteTimerRef.current) clearTimeout(quoteTimerRef.current)
+    setQuotes([])
+    setQuotesFallback(null)
+    if (zip.length < 4) return
+    // Capturar todo en este momento (puede cambiar antes de que corra el timeout)
+    const city  = form.shippingCity
+    const state = form.shippingProvince
+    const { totalWeight, dimH, dimW, dimL } = calcShippingDims()
+    setQuotesLoading(true)
+    quoteTimerRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          zipDestino:    zip,
+          weightGrams:   String(totalWeight),
+          declaredValue: String(productTotal),
+          dimH:          String(dimH),
+          dimW:          String(dimW),
+          dimL:          String(dimL),
+        })
+        if (city)  params.set('city',  city)
+        if (state) params.set('state', state)
+        const res  = await fetch(`${import.meta.env.VITE_API_URL}/public/shipping/calculate?${params}`)
+        const json = await res.json()
+        if (json.success) {
+          if (json.data.quotes?.length > 0) {
+            // Ordenamos por cost ascendente para garantizar que [0] sea siempre el más barato
+            const sorted = (json.data.quotes as ZipnovaQuote[]).slice().sort((a, b) => a.cost - b.cost)
+            setQuotes(sorted)
+          } else {
+            setQuotesFallback(json.data.message ?? 'El costo de envío no pudo calcularse. Te lo informaremos por WhatsApp.')
+          }
+        }
+      } catch {
+        setQuotesFallback('El costo de envío no pudo calcularse. Te lo informaremos por WhatsApp.')
+      }
+      setQuotesLoading(false)
+    }, 600)
+  }
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  function handleShippingType(type: 'LOCAL_PICKUP' | 'DOMICILIO') {
+    setForm(prev => ({ ...prev, shippingType: type, deliveryMode: 'home', shippingAddress: '', shippingCity: '', shippingProvince: '', shippingZip: '' }))
+    setSelectedProvinceId('')
+    setQuotes([])
+    setQuotesFallback(null)
+    setCitySuggestions([])
+    setAddressSuggestions([])
+  }
+
+  function handleDeliveryMode(mode: 'home' | 'branch') {
+    setForm(prev => ({ ...prev, deliveryMode: mode, shippingAddress: '', shippingCity: '', shippingProvince: '', shippingZip: '' }))
+    setSelectedProvinceId('')
+    setQuotes([])
+    setQuotesFallback(null)
+    setCitySuggestions([])
+    setAddressSuggestions([])
+  }
+
+  function handleProvinceChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const id   = e.target.value
+    const name = AR_PROVINCES.find(p => p.id === id)?.name ?? ''
+    setSelectedProvinceId(id)
+    setForm(prev => ({ ...prev, shippingProvince: name, shippingCity: '', shippingAddress: '', shippingZip: '' }))
+    setCitySuggestions([])
+    setAddressSuggestions([])
+    setQuotes([])
+    setQuotesFallback(null)
+  }
+
+  function handleCityInput(value: string) {
+    setForm(prev => ({ ...prev, shippingCity: value }))
+    if (cityTimerRef.current) clearTimeout(cityTimerRef.current)
+    setCityOpen(false)
+    if (value.length < 2) { setCitySuggestions([]); return }
+    cityTimerRef.current = setTimeout(async () => {
+      setCityLoading(true)
+      try {
+        const params = new URLSearchParams({ nombre: value, campos: 'nombre', max: '8', orden: 'nombre' })
+        if (selectedProvinceId) params.set('provincia', selectedProvinceId)
+        const res  = await fetch(`${GEOREF}/localidades?${params}`)
+        const json = await res.json()
+        const names: string[] = (json.localidades ?? []).map((l: { nombre: string }) => l.nombre)
+        setCitySuggestions(names)
+        setCityOpen(names.length > 0)
+      } catch { /* silently ignore */ }
+      setCityLoading(false)
+    }, 350)
+  }
+
+  function handleAddressInput(value: string) {
+    setForm(prev => ({ ...prev, shippingAddress: value }))
+    if (addressTimerRef.current) clearTimeout(addressTimerRef.current)
+    setAddressOpen(false)
+    if (value.length < 4) { setAddressSuggestions([]); return }
+    addressTimerRef.current = setTimeout(async () => {
+      setAddressLoading(true)
+      try {
+        const params = new URLSearchParams({ direccion: value, max: '6' })
+        if (selectedProvinceId) params.set('provincia', selectedProvinceId)
+        const res  = await fetch(`${GEOREF}/direcciones?${params}`)
+        const json = await res.json()
+        const suggestions: string[] = [...new Set(
+          (json.direcciones ?? [])
+            .map((d: { nomenclatura?: string }) => d.nomenclatura?.split(',')[0]?.trim())
+            .filter(Boolean) as string[]
+        )]
+        setAddressSuggestions(suggestions)
+        setAddressOpen(suggestions.length > 0)
+      } catch { /* silently ignore */ }
+      setAddressLoading(false)
+    }, 400)
+  }
+
+  function handleZip(e: React.ChangeEvent<HTMLInputElement>) {
+    const zip = e.target.value.replace(/\D/g, '').slice(0, 8)
+    setForm(prev => ({ ...prev, shippingZip: zip }))
+    triggerQuote(zip)
+  }
+
+  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(prev => ({ ...prev, [k]: e.target.value }))
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.buyerName || !form.buyerWhatsapp) { setError('Nombre y WhatsApp son obligatorios'); return }
+    if (isDomicilio) {
+      if (!form.shippingProvince)            { setError('Seleccioná la provincia'); return }
+      if (!form.shippingCity)                { setError('Ingresá la localidad'); return }
+      if (!isBranch && !form.shippingAddress){ setError('Ingresá la dirección'); return }
+      if (!form.shippingZip)                 { setError('Ingresá el código postal'); return }
+    }
     setError('')
     setSubmitting(true)
     try {
-      const cfg = await getPublicConfig()
-      setConfig(cfg)
+      // Si config no cargó aún al montar, lo intentamos ahora
+      if (!config) {
+        const cfg = await getPublicConfig()
+        setConfig(cfg)
+      }
       setStep(2)
     } catch { setError('Error al cargar datos de pago') }
     setSubmitting(false)
@@ -267,34 +502,66 @@ function Checkout({ cart, refCode, onBack, onSuccess }: {
     setSubmitting(true)
     setError('')
     try {
+      const shippingMethod = isDomicilio
+        ? (cheapestQuote?.shippingMethod ?? 'OTHER_CARRIER')
+        : 'LOCAL_PICKUP'
+
       const result = await createPublicOrder({
         refCode,
-        buyerName: form.buyerName,
-        buyerWhatsapp: form.buyerWhatsapp,
-        buyerEmail: form.buyerEmail || undefined,
-        shippingMethod: form.shippingMethod,
-        ...(form.shippingMethod !== 'LOCAL_PICKUP' && {
-          shippingAddress: form.shippingAddress,
-          shippingCity: form.shippingCity,
+        buyerName:         form.buyerName,
+        buyerWhatsapp:     form.buyerWhatsapp,
+        buyerEmail:        form.buyerEmail || undefined,
+        shippingMethod,
+        ...(isDomicilio && {
+          shippingAddress:  isBranch ? 'Entrega en sucursal' : form.shippingAddress,
+          shippingCity:     form.shippingCity,
           shippingProvince: form.shippingProvince,
-          shippingZip: form.shippingZip,
+          shippingZip:      form.shippingZip,
         }),
+        // shippingCost NO se envía → total del pedido = solo productos
+        // shippingQuoteData guarda el estimado como referencia para el admin
+        ...(cheapestQuote && {
+          shippingQuoteData: JSON.stringify({
+            estimated:    true,
+            carrierId:    cheapestQuote.carrierId,
+            carrierName:  cheapestQuote.carrierName,
+            serviceType:  cheapestQuote.serviceType,
+            logisticType: cheapestQuote.logisticType,
+            estimatedCost: cheapestQuote.cost,
+          }),
+        }),
+        ...(form.buyerNote.trim() && { buyerNote: form.buyerNote.trim() }),
         items: cart.map(i => ({ variantId: i.variantId, quantity: i.quantity })),
       })
+      // Total en WA = solo productos (envío se confirma después)
       const waLink = linkYaTransferi(result.payment.whatsapp, {
         orderNumber: result.order.orderNumber,
-        buyerName: form.buyerName,
-        total,    // usa el total local calculado del carrito (es un número real)
+        buyerName:   form.buyerName,
+        total:       productTotal,
       })
       onSuccess(result, waLink)
-    } catch (e: any) {
-      setError(e?.response?.data?.error?.message ?? 'Error al procesar el pedido')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: { message?: string } } } }
+      setError(err?.response?.data?.error?.message ?? 'Error al procesar el pedido')
     }
     setSubmitting(false)
   }
 
-  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm(prev => ({ ...prev, [k]: e.target.value }))
+  const carrierLabel = isDomicilio ? 'Envío a domicilio' : 'Retiro local'
+
+  // ── Estilos helper para autocomplete ──────────────────────────────────────
+  const SUG_DROPDOWN: React.CSSProperties = {
+    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+    background: '#fff', borderRadius: '0 0 0.625rem 0.625rem',
+    border: '1.5px solid #b8922a', borderTop: 'none',
+    maxHeight: '200px', overflowY: 'auto',
+    boxShadow: '0 6px 16px rgba(0,0,0,0.12)',
+  }
+  const SUG_ITEM: React.CSSProperties = {
+    padding: '0.6rem 0.875rem', cursor: 'pointer',
+    fontSize: '0.875rem', color: '#111',
+    borderBottom: '1px solid #f0ece4',
+  }
 
   return (
     <div style={{ maxWidth: '520px', margin: '0 auto' }}>
@@ -312,32 +579,194 @@ function Checkout({ cart, refCode, onBack, onSuccess }: {
           <div><label style={LABEL}>WhatsApp (con código de país) *</label><input value={form.buyerWhatsapp} onChange={f('buyerWhatsapp')} placeholder="5493812345678" style={INP} required /></div>
           <div><label style={LABEL}>Email (opcional)</label><input type="email" value={form.buyerEmail} onChange={f('buyerEmail')} style={INP} /></div>
 
+          {/* Tipo de entrega */}
           <div>
-            <label style={LABEL}>Método de envío *</label>
-            <select value={form.shippingMethod} onChange={f('shippingMethod')} style={INP}>
-              <option value="LOCAL_PICKUP">Retiro local / acordar con revendedor</option>
-              <option value="CORREO_ARGENTINO">Correo Argentino</option>
-              <option value="ANDREANI">Andreani</option>
-            </select>
+            <p style={LABEL}>Tipo de entrega *</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+              {(['LOCAL_PICKUP', 'DOMICILIO'] as const).map(type => (
+                <button key={type} type="button" onClick={() => handleShippingType(type)}
+                  style={{ padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem',
+                    border: `2px solid ${form.shippingType === type ? '#111' : '#e0dbd0'}`,
+                    background: form.shippingType === type ? '#111' : '#fff',
+                    color: form.shippingType === type ? '#fff' : '#6b7280',
+                  }}>
+                  {type === 'LOCAL_PICKUP' ? '🏪 Retiro local' : '🚚 Envío a domicilio'}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {form.shippingMethod !== 'LOCAL_PICKUP' && (
+          {isDomicilio && (
             <>
-              <div><label style={LABEL}>Dirección</label><input value={form.shippingAddress} onChange={f('shippingAddress')} style={INP} /></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <div><label style={LABEL}>Ciudad</label><input value={form.shippingCity} onChange={f('shippingCity')} style={INP} /></div>
-                <div><label style={LABEL}>Provincia</label><input value={form.shippingProvince} onChange={f('shippingProvince')} style={INP} /></div>
+              {/* Sub-opción: a domicilio o en sucursal */}
+              <div>
+                <p style={LABEL}>¿Cómo querés recibirlo? *</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  {(['home', 'branch'] as const).map(mode => (
+                    <button key={mode} type="button" onClick={() => handleDeliveryMode(mode)}
+                      style={{ padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem',
+                        border: `2px solid ${form.deliveryMode === mode ? GOLD : '#e0dbd0'}`,
+                        background: form.deliveryMode === mode ? '#fef9ec' : '#fff',
+                        color: form.deliveryMode === mode ? GOLD : '#6b7280',
+                      }}>
+                      {mode === 'home' ? '🏠 A mi domicilio' : '🏪 En sucursal'}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div><label style={LABEL}>Código postal</label><input value={form.shippingZip} onChange={f('shippingZip')} style={INP} /></div>
+
+              {/* Provincia */}
+              <div>
+                <label style={LABEL}>Provincia *</label>
+                <select
+                  value={selectedProvinceId}
+                  onChange={handleProvinceChange}
+                  required
+                  style={{ ...INP, appearance: 'none', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\' viewBox=\'0 0 12 8\'%3E%3Cpath d=\'M1 1l5 5 5-5\' stroke=\'%239ca3af\' stroke-width=\'1.5\' fill=\'none\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.875rem center', paddingRight: '2.25rem' } as React.CSSProperties}
+                >
+                  <option value="">Seleccioná tu provincia...</option>
+                  {AR_PROVINCES.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Localidad con autocomplete */}
+              <div style={{ position: 'relative' }}>
+                <label style={LABEL}>Localidad / Ciudad *</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    value={form.shippingCity}
+                    onChange={e => handleCityInput(e.target.value)}
+                    onFocus={() => citySuggestions.length > 0 && setCityOpen(true)}
+                    onBlur={() => setTimeout(() => setCityOpen(false), 180)}
+                    style={INP}
+                    placeholder={selectedProvinceId ? 'Escribí tu localidad...' : 'Primero elegí la provincia'}
+                    disabled={!selectedProvinceId}
+                    required
+                    autoComplete="off"
+                  />
+                  {cityLoading && (
+                    <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '0.75rem' }}>•••</span>
+                  )}
+                  {cityOpen && citySuggestions.length > 0 && (
+                    <div style={SUG_DROPDOWN}>
+                      {citySuggestions.map(s => (
+                        <div key={s} onMouseDown={() => { setForm(prev => ({ ...prev, shippingCity: s })); setCityOpen(false) }}
+                          style={SUG_ITEM}>
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Dirección con autocomplete — solo para entrega a domicilio */}
+              {!isBranch && <div style={{ position: 'relative' }}>
+                <label style={LABEL}>Calle y número *</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    value={form.shippingAddress}
+                    onChange={e => handleAddressInput(e.target.value)}
+                    onFocus={() => addressSuggestions.length > 0 && setAddressOpen(true)}
+                    onBlur={() => setTimeout(() => setAddressOpen(false), 180)}
+                    style={INP}
+                    placeholder="Ej: Av. Italia 610"
+                    disabled={!selectedProvinceId}
+                    required
+                    autoComplete="off"
+                  />
+                  {addressLoading && (
+                    <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '0.75rem' }}>•••</span>
+                  )}
+                  {addressOpen && addressSuggestions.length > 0 && (
+                    <div style={SUG_DROPDOWN}>
+                      {addressSuggestions.map(s => (
+                        <div key={s} onMouseDown={() => { setForm(prev => ({ ...prev, shippingAddress: s })); setAddressOpen(false) }}
+                          style={SUG_ITEM}>
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>}
+
+              {/* Código postal */}
+              <div>
+                <label style={LABEL}>{isBranch ? 'Código postal de tu zona *' : 'Código postal *'}</label>
+                <input
+                  value={form.shippingZip}
+                  onChange={handleZip}
+                  placeholder="Ej: 4000"
+                  style={INP}
+                  inputMode="numeric"
+                  required
+                  autoComplete="off"
+                />
+                <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                  {isBranch ? 'Lo usamos para estimar el costo de envío a sucursal' : 'Se usa para calcular el costo de envío'}
+                </p>
+              </div>
+
+              {/* Estimado de envío Zipnova */}
+              {form.shippingZip.length >= 4 && (
+                <div>
+                  {quotesLoading && (
+                    <div style={{ padding: '0.875rem 1rem', borderRadius: '0.75rem', background: CREAM, border: '1px solid #e0dbd0', fontSize: '0.875rem', color: '#6b7280', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Calculando estimado de envío...
+                    </div>
+                  )}
+
+                  {!quotesLoading && cheapestQuote && (
+                    <div style={{ padding: '0.875rem 1rem', borderRadius: '0.75rem', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                      <p style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151', margin: '0 0 0.25rem' }}>
+                        📦 Envío estimado
+                      </p>
+                      <p style={{ fontSize: '0.9375rem', color: '#166534', margin: 0, lineHeight: 1.4 }}>
+                        Envío estimado: <strong>${cheapestQuote.cost.toLocaleString('es-AR')}</strong>
+                      </p>
+                      <p style={{ fontSize: '0.775rem', color: '#6b7280', margin: '0.3rem 0 0' }}>
+                        Solo transferís el total de productos. El costo final lo confirmamos por WhatsApp.
+                      </p>
+                    </div>
+                  )}
+
+                  {!quotesLoading && quotesFallback && (
+                    <div style={{ padding: '0.875rem 1rem', borderRadius: '0.75rem', background: '#fffbeb', border: '1px solid #fde68a', display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.875rem' }}>
+                      <span>💬</span>
+                      <span style={{ color: '#92400e' }}>{quotesFallback}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
+
+          {/* Nota del pedido */}
+          <div>
+            <label style={LABEL}>Nota del pedido <span style={{ fontWeight: 400, color: '#9ca3af' }}>(opcional)</span></label>
+            <textarea
+              value={form.buyerNote}
+              onChange={e => setForm(prev => ({ ...prev, buyerNote: e.target.value }))}
+              style={{ ...INP, minHeight: '80px', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.9375rem' } as React.CSSProperties}
+              placeholder="Ej: Dejar en portería, horario preferido de entrega, aclaraciones sobre el pedido..."
+              maxLength={500}
+            />
+            {form.buyerNote.length > 0 && (
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem', textAlign: 'right' }}>
+                {form.buyerNote.length}/500
+              </p>
+            )}
+          </div>
 
           {error && <p style={{ color: '#dc2626', fontSize: '0.85rem' }}>{error}</p>}
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
             <button type="button" onClick={onBack} style={{ flex: 1, padding: '0.75rem', borderRadius: '0.625rem', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Volver</button>
             <button type="submit" disabled={submitting} style={{ flex: 2, padding: '0.75rem', borderRadius: '0.625rem', border: 'none', background: '#111', color: CREAM, fontWeight: 700, cursor: 'pointer' }}>
-              {submitting ? 'Cargando...' : `Continuar · $${total.toLocaleString('es-AR')}`}
+              {submitting ? 'Cargando...' : `Continuar · $${productTotal.toLocaleString('es-AR')}`}
             </button>
           </div>
         </form>
@@ -347,7 +776,46 @@ function Checkout({ cart, refCode, onBack, onSuccess }: {
         <div>
           <div style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e0dbd0', padding: '1.5rem', marginBottom: '1rem' }}>
             <p style={{ fontSize: '0.8rem', fontWeight: 600, color: GOLD, marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Datos para transferir</p>
-            <p style={{ fontSize: '2rem', fontWeight: 700, color: '#111', marginBottom: '0.25rem' }}>${total.toLocaleString('es-AR')}</p>
+
+            {/* Desglose */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '0.875rem', paddingBottom: '0.875rem', borderBottom: '1px dashed #e0dbd0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                <span style={{ color: '#6b7280' }}>Subtotal productos</span>
+                <span style={{ fontWeight: 600 }}>${productTotal.toLocaleString('es-AR')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                  <span style={{ color: '#6b7280' }}>{carrierLabel}</span>
+                  {isDomicilio && (
+                    <span style={{ fontSize: '0.65rem', background: '#fef9ec', color: '#92400e', border: '1px solid #fde68a', borderRadius: '99px', padding: '0.05rem 0.4rem', fontWeight: 700 }}>
+                      ESTIMADO
+                    </span>
+                  )}
+                </div>
+                {!isDomicilio
+                  ? <span style={{ fontWeight: 600, color: '#166534' }}>Retiro local</span>
+                  : cheapestQuote
+                    ? <span style={{ color: '#92400e', fontSize: '0.875rem', fontStyle: 'italic' }}>est. ${cheapestQuote.cost.toLocaleString('es-AR')}</span>
+                    : <span style={{ color: '#92400e', fontSize: '0.8rem', fontStyle: 'italic' }}>A confirmar por WhatsApp</span>
+                }
+              </div>
+            </div>
+
+            {/* Total a transferir = solo productos */}
+            <div style={{ marginBottom: '0.5rem' }}>
+              <p style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 0.125rem' }}>
+                Total a transferir hoy
+              </p>
+              <p style={{ fontSize: '2rem', fontWeight: 700, color: '#111', margin: 0 }}>
+                ${productTotal.toLocaleString('es-AR')}
+              </p>
+              {isDomicilio && (
+                <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '0.125rem 0 0' }}>
+                  El envío se abona por separado — te lo confirmamos por WhatsApp
+                </p>
+              )}
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>CBU</span>
@@ -361,6 +829,20 @@ function Checkout({ cart, refCode, onBack, onSuccess }: {
               )}
             </div>
           </div>
+
+          {/* Aviso de envío — siempre visible cuando es domicilio */}
+          {isDomicilio && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.75rem', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.625rem', alignItems: 'flex-start', fontSize: '0.875rem' }}>
+              <span>💬</span>
+              <span style={{ color: '#92400e', lineHeight: 1.5 }}>
+                <strong>No incluyas el envío en la transferencia.</strong>{' '}
+                {cheapestQuote
+                  ? <>Envío estimado: <strong>${cheapestQuote.cost.toLocaleString('es-AR')}</strong>. El precio final te lo confirmamos por WhatsApp antes de despachar.</>
+                  : <>El costo de envío te lo informamos por WhatsApp antes de despachar.</>
+                }
+              </span>
+            </div>
+          )}
 
           {/* Resumen del pedido */}
           <div style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e0dbd0', padding: '1rem', marginBottom: '1rem' }}>
@@ -568,6 +1050,7 @@ export function CatalogPage() {
         {view === 'checkout' && (
           <Checkout
             cart={cart}
+            products={catalog?.products ?? []}
             refCode={refCode}
             onBack={() => setView('catalog')}
             onSuccess={(order, waLink) => {

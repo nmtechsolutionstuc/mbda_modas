@@ -23,4 +23,10 @@ export const env = {
   cloudinaryCloudName: process.env['CLOUDINARY_CLOUD_NAME'],
   cloudinaryApiKey: process.env['CLOUDINARY_API_KEY'],
   cloudinaryApiSecret: process.env['CLOUDINARY_API_SECRET'],
+  // Zipnova — cotización y etiquetas de envío
+  zipnovaApiKey:    process.env['ZIPNOVA_API_KEY'],
+  zipnovaApiSecret: process.env['ZIPNOVA_API_SECRET'],
+  zipnovaAccountId: process.env['ZIPNOVA_ACCOUNT_ID']
+    ? parseInt(process.env['ZIPNOVA_ACCOUNT_ID'], 10)
+    : undefined,
 } as const

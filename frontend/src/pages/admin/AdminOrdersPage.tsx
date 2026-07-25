@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getAdminOrders, confirmOrderPayment, dispatchOrder, cancelAdminOrder,
-  markOrderProofReceived, rejectOrderPayment, cancelSingleItem,
+  markOrderProofReceived, rejectOrderPayment, cancelSingleItem, downloadShippingLabel,
   type Order, type OrderStatus,
 } from '../../api/admin'
 import { useToast } from '../../context/ToastContext'
@@ -168,6 +168,33 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
     }
   }
 
+  const [labelLoading, setLabelLoading] = useState(false)
+
+  async function handleDownloadLabel() {
+    setLabelLoading(true)
+    try {
+      const { blob, trackingNumber } = await downloadShippingLabel(order.id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `etiqueta-${order.orderNumber}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      if (trackingNumber) {
+        showToast(`Etiqueta descargada. Tracking: ${trackingNumber}`, 'success')
+      } else {
+        showToast('Etiqueta descargada', 'success')
+      }
+    } catch (e: any) {
+      const msg = e.response?.data?.error?.message ?? 'No se pudo generar la etiqueta. Verificá la configuración de Zipnova.'
+      showToast(msg, 'error')
+    } finally {
+      setLabelLoading(false)
+    }
+  }
+
   const waConfirmLink = linkWhatsApp(
     order.reseller.whatsapp,
     `✅ Recibimos tu pago para el pedido ${order.orderNumber}. Pronto comenzamos a prepararlo. ¡Gracias por tu compra!`,
@@ -200,6 +227,35 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
             <Row label="Envío" value={SHIPPING_LABEL[order.shippingMethod]} />
             {order.shippingAddress && (
               <Row label="Dirección" value={`${order.shippingAddress}, ${order.shippingCity}, ${order.shippingProvince} (${order.shippingZip})`} />
+            )}
+            {/* Estimado de envío Zipnova (guardado al crear el pedido) */}
+            {order.shippingMethod !== 'LOCAL_PICKUP' && order.shippingQuoteData && (() => {
+              try {
+                const q = JSON.parse(order.shippingQuoteData) as { estimated?: boolean; carrierName?: string; serviceType?: string; estimatedCost?: number }
+                if (!q.estimated) return null
+                return (
+                  <div style={{ marginTop: '0.625rem', padding: '0.75rem 1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.5rem' }}>
+                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                      📦 Envío estimado
+                      <span style={{ fontSize: '0.65rem', background: '#fef9ec', color: '#92400e', border: '1px solid #fde68a', borderRadius: '99px', padding: '0.05rem 0.4rem', fontWeight: 700 }}>
+                        ESTIMADO
+                      </span>
+                    </p>
+                    <p style={{ fontSize: '0.875rem', color: '#374151', margin: 0, fontWeight: 700 }}>
+                      ~${q.estimatedCost?.toLocaleString('es-AR') ?? '?'}
+                    </p>
+                    <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.25rem 0 0' }}>
+                      El cliente solo transfirió el total de productos. Confirmar costo real por WhatsApp.
+                    </p>
+                  </div>
+                )
+              } catch { return null }
+            })()}
+            {order.buyerNote && (
+              <div style={{ marginTop: '0.625rem', padding: '0.75rem 1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.5rem' }}>
+                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400e', marginBottom: '0.25rem' }}>📝 Nota del comprador</p>
+                <p style={{ fontSize: '0.875rem', color: '#374151', margin: 0, whiteSpace: 'pre-wrap' }}>{order.buyerNote}</p>
+              </div>
             )}
           </Section>
 
@@ -247,9 +303,27 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5} style={{ padding: '0.75rem 0.25rem', textAlign: 'right', fontWeight: 700 }}>Total:</td>
+                  <td colSpan={5} style={{ padding: '0.75rem 0.25rem', textAlign: 'right', fontWeight: 700 }}>
+                    {order.shippingMethod !== 'LOCAL_PICKUP' ? 'Total productos:' : 'Total:'}
+                  </td>
                   <td style={{ padding: '0.75rem 0.25rem', fontWeight: 700, color: '#b8922a' }}>{fmt(order.total)}</td>
                 </tr>
+                {order.shippingMethod !== 'LOCAL_PICKUP' && (() => {
+                  try {
+                    const q = JSON.parse(order.shippingQuoteData ?? '{}') as { estimated?: boolean; estimatedCost?: number }
+                    if (!q.estimated) return null
+                    return (
+                      <tr>
+                        <td colSpan={5} style={{ padding: '0.25rem 0.25rem', textAlign: 'right', fontSize: '0.8125rem', color: '#92400e', fontStyle: 'italic' }}>
+                          + Envío estimado:
+                        </td>
+                        <td style={{ padding: '0.25rem 0.25rem', fontSize: '0.8125rem', color: '#92400e', fontStyle: 'italic' }}>
+                          ~${q.estimatedCost?.toLocaleString('es-AR') ?? '?'}
+                        </td>
+                      </tr>
+                    )
+                  } catch { return null }
+                })()}
               </tfoot>
             </table>
           </Section>
@@ -303,13 +377,25 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
                   <ActionBtn onClick={() => setView('dispatch')} color="#6366f1">
                     🚚 Marcar como despachado
                   </ActionBtn>
+                  {order.shippingMethod !== 'LOCAL_PICKUP' && order.shippingQuoteData && (
+                    <ActionBtn onClick={handleDownloadLabel} loading={labelLoading} color="#0369a1">
+                      📄 Descargar etiqueta Zipnova
+                    </ActionBtn>
+                  )}
                   <ActionBtn onClick={() => setView('cancel')} color="#ef4444" outline>Cancelar pedido</ActionBtn>
                 </>
               )}
               {order.status === 'DISPATCHED' && (
-                <a href={waDispatchLink} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-                  <ActionBtn onClick={() => {}} color="#6366f1">📱 Avisar al comprador</ActionBtn>
-                </a>
+                <>
+                  <a href={waDispatchLink} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                    <ActionBtn onClick={() => {}} color="#6366f1">📱 Avisar al comprador</ActionBtn>
+                  </a>
+                  {order.shippingMethod !== 'LOCAL_PICKUP' && order.shippingQuoteData && (
+                    <ActionBtn onClick={handleDownloadLabel} loading={labelLoading} color="#0369a1">
+                      📄 Descargar etiqueta Zipnova
+                    </ActionBtn>
+                  )}
+                </>
               )}
             </div>
           )}

@@ -23,6 +23,7 @@ import {
   getOrders, getOrderById, confirmOrderPayment,
   dispatchOrderAction, cancelOrderAction,
   markProofAction, rejectPaymentAction, cancelItemAction,
+  getShippingLabel,
   listCommissions, markCommissionPaid,
 } from '../controllers/admin.order.controller'
 import {
@@ -70,6 +71,7 @@ router.patch('/orders/:id/reject',              adminOnly, rejectPaymentAction)
 router.patch('/orders/:id/dispatch',            adminOnly, dispatchOrderAction)
 router.patch('/orders/:id/cancel',              adminOnly, cancelOrderAction)
 router.patch('/orders/:id/items/:itemId/cancel', adminOnly, cancelItemAction)
+router.get('/orders/:id/label',                  adminOnly, getShippingLabel)
 
 // ── Comisiones (solo ADMIN) ───────────────────────────────────────────────────
 router.get('/commissions',                 adminOnly, listCommissions)

@@ -23,7 +23,8 @@ const BTN = (variant: 'primary' | 'secondary' | 'danger' = 'primary'): React.CSS
 
 // ── Schema del formulario de producto ─────────────────────────────────────────
 const VariantSchema = z.object({
-  size: z.string().min(1, 'Talle requerido'),
+  id:    z.string().optional(),  // presente en variantes existentes al editar
+  size:  z.string().min(1, 'Talle requerido'),
   color: z.string().min(1, 'Color requerido'),
   stock: z.coerce.number().int().min(0, 'Stock ≥ 0'),
 })
@@ -35,6 +36,9 @@ const ProductSchema = z.object({
   commissionPct: z.coerce.number().min(1).max(100),
   categoryId: z.string().min(1, 'Seleccioná una categoría'),
   weightGrams: z.coerce.number().int().positive().optional().or(z.literal('')),
+  dimH: z.coerce.number().positive().optional().or(z.literal('')),
+  dimW: z.coerce.number().positive().optional().or(z.literal('')),
+  dimL: z.coerce.number().positive().optional().or(z.literal('')),
   variants: z.array(VariantSchema).min(1, 'Agregá al menos una variante'),
 })
 
@@ -102,7 +106,7 @@ export function AdminProductsPage() {
   function openCreate() {
     setEditingProduct(null)
     setPhotoFiles([]); setPhotoPreviews([]); setDeletePhotos([])
-    reset({ name: '', description: '', basePrice: undefined, commissionPct: 20, categoryId: '', weightGrams: undefined, variants: [{ size: '', color: '', stock: 0 }] })
+    reset({ name: '', description: '', basePrice: undefined, commissionPct: 20, categoryId: '', weightGrams: undefined, dimH: undefined, dimW: undefined, dimL: undefined, variants: [{ size: '', color: '', stock: 0 }] })
     setProductModal(true)
   }
 
@@ -115,7 +119,10 @@ export function AdminProductsPage() {
       commissionPct: parseFloat(p.commissionPct),
       categoryId: p.categoryId,
       weightGrams: p.weightGrams ?? ('' as unknown as undefined),
-      variants: p.variants.map(v => ({ size: v.size, color: v.color, stock: v.stock })),
+      dimH: p.dimH != null ? parseFloat(p.dimH) : ('' as unknown as undefined),
+      dimW: p.dimW != null ? parseFloat(p.dimW) : ('' as unknown as undefined),
+      dimL: p.dimL != null ? parseFloat(p.dimL) : ('' as unknown as undefined),
+      variants: p.variants.map(v => ({ id: v.id, size: v.size, color: v.color, stock: v.stock })),
     })
     setProductModal(true)
   }
@@ -146,7 +153,14 @@ export function AdminProductsPage() {
       fd.append('commissionPct', String(values.commissionPct))
       fd.append('categoryId', values.categoryId)
       if (values.weightGrams) fd.append('weightGrams', String(values.weightGrams))
-      fd.append('variants', JSON.stringify(values.variants))
+      if (values.dimH) fd.append('dimH', String(values.dimH))
+      if (values.dimW) fd.append('dimW', String(values.dimW))
+      if (values.dimL) fd.append('dimL', String(values.dimL))
+      // Incluir id de variante existente para upsert inteligente en el backend
+      fd.append('variants', JSON.stringify(values.variants.map(v => ({
+        ...(v.id ? { id: v.id } : {}),
+        size: v.size, color: v.color, stock: v.stock,
+      }))))
       if (deletePhotos.length) fd.append('deletePhotos', JSON.stringify(deletePhotos))
       photoFiles.forEach(f => fd.append('photos', f))
 
@@ -386,10 +400,29 @@ export function AdminProductsPage() {
               </div>
             </div>
 
-            {/* Peso */}
-            <div style={{ maxWidth: '200px' }}>
-              <label style={LABEL}>Peso (gramos)</label>
-              <input {...register('weightGrams')} type="number" min="1" style={INP} placeholder="250" />
+            {/* Peso y dimensiones para cálculo de envío */}
+            <div>
+              <p style={{ ...LABEL, marginBottom: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
+                📦 Datos de envío <span style={{ fontWeight: 400 }}>(opcionales — se usan para cotizar el flete)</span>
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+                <div>
+                  <label style={LABEL}>Peso (g)</label>
+                  <input {...register('weightGrams')} type="number" min="1" style={INP} placeholder="250" />
+                </div>
+                <div>
+                  <label style={LABEL}>Alto (cm)</label>
+                  <input {...register('dimH')} type="number" min="0.1" step="0.1" style={INP} placeholder="10" />
+                </div>
+                <div>
+                  <label style={LABEL}>Ancho (cm)</label>
+                  <input {...register('dimW')} type="number" min="0.1" step="0.1" style={INP} placeholder="15" />
+                </div>
+                <div>
+                  <label style={LABEL}>Largo (cm)</label>
+                  <input {...register('dimL')} type="number" min="0.1" step="0.1" style={INP} placeholder="20" />
+                </div>
+              </div>
             </div>
 
             {/* Variantes */}

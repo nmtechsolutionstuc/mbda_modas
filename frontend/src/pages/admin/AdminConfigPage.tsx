@@ -44,7 +44,7 @@ const BTN_GHOST: React.CSSProperties = {
   border: '1.5px solid #e0dbd0',
 }
 
-// ── CBU client-side validation (quick format check) ──────────────────────────
+// ── CBU client-side validation ────────────────────────────────────────────────
 
 function isValidCbuFormat(cbu: string): boolean {
   return /^\d{22}$/.test(cbu.trim())
@@ -231,6 +231,8 @@ export function AdminConfigPage() {
   const [dispatchDays, setDispatchDays] = useState(3)
   const [stockReserveHours, setStockReserveHours] = useState(24)
   const [defaultCommissionPct, setDefaultCommissionPct] = useState('')
+  const [zipnovaDiscountPctHome, setZipnovaDiscountPctHome] = useState('')
+  const [zipnovaDiscountPctBranch, setZipnovaDiscountPctBranch] = useState('')
 
   // Terms
   const [termsContent, setTermsContent] = useState('')
@@ -249,6 +251,8 @@ export function AdminConfigPage() {
         setDispatchDays(c.dispatchDays)
         setStockReserveHours(c.stockReserveHours)
         setDefaultCommissionPct(String(c.defaultCommissionPct ?? ''))
+        setZipnovaDiscountPctHome(String(c.zipnovaDiscountPctHome ?? '0'))
+        setZipnovaDiscountPctBranch(String(c.zipnovaDiscountPctBranch ?? '0'))
         setTermsContent(c.termsContent ?? '')
       })
       .catch(() => showToast('Error al cargar configuración', 'error'))
@@ -271,13 +275,11 @@ export function AdminConfigPage() {
   }
 
   function requestSavePayment() {
-    // Client-side CBU format check
     if (cbu && !isValidCbuFormat(cbu)) {
       setCbuError('El CBU debe tener exactamente 22 dígitos numéricos')
       return
     }
     setCbuError('')
-    // Require password confirmation for sensitive fields
     setPendingPayload({ cbu, alias, whatsapp })
     setPendingSection('payment')
   }
@@ -311,7 +313,6 @@ export function AdminConfigPage() {
 
         {/* ── Datos de pago ──────────────────────────────────────────────── */}
         <Section title="💳 Datos de pago">
-          {/* Security notice */}
           <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '0.625rem', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.8125rem', color: '#92400e' }}>
             🔒 <strong>Área protegida.</strong> Modificar CBU, alias o WhatsApp requiere confirmar tu contraseña y queda registrado en el historial de auditoría.
           </div>
@@ -393,6 +394,50 @@ export function AdminConfigPage() {
                 style={{ ...BTN_PRIMARY, opacity: saving === 'orders' ? 0.6 : 1 }}
               >
                 {saving === 'orders' ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </Section>
+
+        {/* ── Cotización de envíos ─────────────────────────────────────────── */}
+        <Section title="🚚 Cotización de envíos">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={LABEL}>Descuento envío a domicilio (%)</label>
+                <input
+                  value={zipnovaDiscountPctHome}
+                  onChange={e => setZipnovaDiscountPctHome(e.target.value)}
+                  type="number" min="0" max="50" step="1"
+                  style={INP}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label style={LABEL}>Descuento envío a sucursal (%)</label>
+                <input
+                  value={zipnovaDiscountPctBranch}
+                  onChange={e => setZipnovaDiscountPctBranch(e.target.value)}
+                  type="number" min="0" max="50" step="1"
+                  style={INP}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.5 }}>
+              Zipnova agrega su margen al precio del transportista. Compará con Correo Argentino directo y ajustá el porcentaje de diferencia.
+              Ejemplo: Zipnova domicilio $3.000 → Correo $2.500 = 17% de descuento.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                disabled={saving === 'shipping'}
+                onClick={() => doSave('shipping', {
+                  zipnovaDiscountPctHome:   zipnovaDiscountPctHome   ? Number(zipnovaDiscountPctHome)   : 0,
+                  zipnovaDiscountPctBranch: zipnovaDiscountPctBranch ? Number(zipnovaDiscountPctBranch) : 0,
+                })}
+                style={{ ...BTN_PRIMARY, opacity: saving === 'shipping' ? 0.6 : 1 }}
+              >
+                {saving === 'shipping' ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
           </div>

@@ -40,16 +40,19 @@ export interface CartItem {
 }
 
 export interface CreateOrderInput {
-  refCode: string
-  buyerName: string
-  buyerWhatsapp: string
-  buyerEmail?: string
-  shippingMethod: 'CORREO_ARGENTINO' | 'ANDREANI' | 'LOCAL_PICKUP'
-  shippingAddress?: string
-  shippingCity?: string
+  refCode:           string
+  buyerName:         string
+  buyerWhatsapp:     string
+  buyerEmail?:       string
+  shippingMethod:    'CORREO_ARGENTINO' | 'ANDREANI' | 'LOCAL_PICKUP' | 'OTHER_CARRIER'
+  shippingAddress?:  string
+  shippingCity?:     string
   shippingProvince?: string
-  shippingZip?: string
-  items: CartItem[]
+  shippingZip?:      string
+  shippingCost?:     number
+  shippingQuoteData?: string  // JSON snapshot del quote Zipnova seleccionado
+  buyerNote?:        string   // Nota libre del comprador
+  items:             CartItem[]
 }
 
 export async function createPublicOrder(input: CreateOrderInput) {
@@ -134,21 +137,25 @@ export async function createPublicOrder(input: CreateOrderInput) {
       })
     }
 
+    const shippingCost = input.shippingCost ?? 0
     const order = await tx.order.create({
       data: {
         orderNumber,
-        resellerId: reseller.id,
-        buyerName: input.buyerName,
-        buyerWhatsapp: input.buyerWhatsapp,
-        buyerEmail: input.buyerEmail,
-        shippingMethod: input.shippingMethod,
-        shippingAddress: input.shippingAddress,
-        shippingCity: input.shippingCity,
-        shippingProvince: input.shippingProvince,
-        shippingZip: input.shippingZip,
+        resellerId:        reseller.id,
+        buyerName:         input.buyerName,
+        buyerWhatsapp:     input.buyerWhatsapp,
+        buyerEmail:        input.buyerEmail,
+        shippingMethod:    input.shippingMethod,
+        shippingAddress:   input.shippingAddress,
+        shippingCity:      input.shippingCity,
+        shippingProvince:  input.shippingProvince,
+        shippingZip:       input.shippingZip,
+        shippingCost:      shippingCost > 0 ? shippingCost : null,
+        shippingQuoteData: input.shippingQuoteData ?? null,
+        buyerNote:         input.buyerNote ?? null,
         subtotal,
-        total: subtotal,
-        status: 'PENDING',
+        total: subtotal + shippingCost,
+        status:        'PENDING',
         reservedUntil,
         items: { create: orderItemsData },
       },

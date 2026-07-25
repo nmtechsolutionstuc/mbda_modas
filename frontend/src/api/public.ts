@@ -18,6 +18,11 @@ export interface PublicProduct {
   sellingPrice: number
   category: { id: string; name: string }
   variants: PublicVariant[]
+  // Dimensiones para cálculo de envío (null = usar default del admin)
+  weightGrams: number | null
+  dimH: number | null
+  dimW: number | null
+  dimL: number | null
 }
 
 export interface PublicReseller {
@@ -39,6 +44,11 @@ export interface PublicConfig {
   alias: string
   whatsapp: string
   dispatchDays: number
+  // Defaults para envío cuando el producto no tiene medidas propias
+  defaultWeightGrams: number | null
+  defaultDimH: number | null
+  defaultDimW: number | null
+  defaultDimL: number | null
 }
 
 export interface LandingContent {
@@ -56,16 +66,40 @@ export interface LandingContent {
   landingStep3Desc: string
 }
 
+export interface ZipnovaQuote {
+  /** Clave única por opción de envío: `${carrierId}_${serviceTypeCode}` */
+  quoteKey:        string
+  /** Valor usado para guardar en DB */
+  shippingMethod:  'CORREO_ARGENTINO' | 'ANDREANI' | 'OTHER_CARRIER'
+  carrierId:       number
+  carrierName:     string
+  /** Código Zipnova, ej: "standard_delivery", "pickup_point" */
+  serviceType:     string
+  /** Nombre legible, ej: "Entrega a domicilio", "Entrega en sucursal" */
+  serviceTypeName: string
+  logisticType:    string
+  cost:            number
+  estimatedDays:   { min: number; max: number } | null
+}
+
+export interface ShippingQuotesResponse {
+  quotes:   ZipnovaQuote[]
+  message?: string  // presente cuando la API falla (fallback)
+}
+
 export interface CreateOrderPayload {
-  refCode: string
-  buyerName: string
-  buyerWhatsapp: string
-  buyerEmail?: string
-  shippingMethod: 'CORREO_ARGENTINO' | 'ANDREANI' | 'LOCAL_PICKUP'
-  shippingAddress?: string
-  shippingCity?: string
+  refCode:           string
+  buyerName:         string
+  buyerWhatsapp:     string
+  buyerEmail?:       string
+  shippingMethod:    'CORREO_ARGENTINO' | 'ANDREANI' | 'LOCAL_PICKUP' | 'OTHER_CARRIER'
+  shippingAddress?:  string
+  shippingCity?:     string
   shippingProvince?: string
-  shippingZip?: string
+  shippingZip?:      string
+  shippingCost?:     number
+  shippingQuoteData?: string  // JSON del quote seleccionado
+  buyerNote?:        string   // Nota libre del comprador
   items: { variantId: string; quantity: number }[]
 }
 

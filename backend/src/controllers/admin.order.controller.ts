@@ -11,6 +11,10 @@ import {
   linkPagoRechazado, linkPedidoCancelado,
 } from '../services/whatsapp.service'
 import { prisma } from '../config/prisma'
+import {
+  createZipnovaShipment, downloadZipnovaLabel, isZipnovaConfigured,
+  type ShippingQuoteSnapshot,
+} from '../services/shipping.service'
 
 export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   const schema = z.object({
@@ -105,6 +109,79 @@ export const rejectPaymentAction = asyncHandler(async (req: Request, res: Respon
 export const cancelItemAction = asyncHandler(async (req: Request, res: Response) => {
   const order = await cancelOrderItem(req.params.id, req.params.itemId)
   ok(res, order)
+})
+
+// ── Etiqueta de envío Zipnova ─────────────────────────────────────────────────
+
+export const getShippingLabel = asyncHandler(async (req: Request, res: Response) => {
+  const order = await prisma.order.findUnique({
+    where: { id: req.params.id },
+    include: { items: true },
+  })
+  if (!order) {
+    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Pedido no encontrado' } })
+    return
+  }
+  if (order.shippingMethod === 'LOCAL_PICKUP') {
+    res.status(400).json({ success: false, error: { code: 'NO_LABEL', message: 'Los pedidos con retiro local no tienen etiqueta de envío' } })
+    return
+  }
+  if (!order.shippingQuoteData) {
+    res.status(400).json({ success: false, error: { code: 'NO_QUOTE', message: 'Este pedido no tiene datos de cotización Zipnova. Solo los pedidos nuevos (post-integración) pueden generar etiquetas automáticamente.' } })
+    return
+  }
+
+  // Verificar que Zipnova esté configurado (env vars)
+  if (!isZipnovaConfigured()) {
+    res.status(503).json({ success: false, error: { code: 'NO_CONFIG', message: 'Zipnova no está configurado. Definí ZIPNOVA_API_KEY, ZIPNOVA_API_SECRET y ZIPNOVA_ACCOUNT_ID en las variables de entorno.' } })
+    return
+  }
+
+  // Crear envío en Zipnova si todavía no fue creado
+  let shipmentId = (order as any).zipnovaShipmentId as number | null
+  let trackingNumber = order.trackingNumber
+
+  if (!shipmentId) {
+    const quoteSnapshot = JSON.parse(order.shippingQuoteData) as ShippingQuoteSnapshot
+    const weightGrams = order.items.reduce((sum, i) => sum + 500 * i.quantity, 0)
+
+    const result = await createZipnovaShipment({
+      orderNumber:      order.orderNumber,
+      declaredValue:    Number(order.total),
+      buyerName:        order.buyerName,
+      buyerEmail:       order.buyerEmail ?? undefined,
+      buyerPhone:       order.buyerWhatsapp,
+      shippingAddress:  order.shippingAddress  ?? '',
+      shippingCity:     order.shippingCity      ?? '',
+      shippingProvince: order.shippingProvince  ?? '',
+      shippingZip:      order.shippingZip       ?? '',
+      weightGrams,
+      quoteSnapshot,
+    })
+
+    shipmentId = result.shipmentId
+
+    // Guardar en DB
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        zipnovaShipmentId: shipmentId,
+        ...(result.trackingNumber ? { trackingNumber: result.trackingNumber } : {}),
+      } as any,
+    })
+
+    if (result.trackingNumber) trackingNumber = result.trackingNumber
+  }
+
+  // Descargar PDF
+  const pdfBuffer = await downloadZipnovaLabel(shipmentId)
+
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `attachment; filename="etiqueta-${order.orderNumber}.pdf"`)
+  if (trackingNumber) {
+    res.setHeader('X-Tracking-Number', trackingNumber)
+  }
+  res.send(pdfBuffer)
 })
 
 // ── Comisiones ────────────────────────────────────────────────────────────────

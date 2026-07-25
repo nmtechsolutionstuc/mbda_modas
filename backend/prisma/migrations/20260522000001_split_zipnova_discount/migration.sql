@@ -1,0 +1,3 @@
+ALTER TABLE "config" DROP COLUMN IF EXISTS "zipnovaDiscountPct";
+ALTER TABLE "config" ADD COLUMN IF NOT EXISTS "zipnovaDiscountPctHome"   DECIMAL(5,2) NOT NULL DEFAULT 0;
+ALTER TABLE "config" ADD COLUMN IF NOT EXISTS "zipnovaDiscountPctBranch" DECIMAL(5,2) NOT NULL DEFAULT 0;

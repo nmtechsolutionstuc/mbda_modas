@@ -24,8 +24,8 @@ const UpdateConfigSchema = z.object({
   stockReserveHours:    z.coerce.number().int().min(1).max(168).optional(),
   defaultWeightGrams:   z.coerce.number().int().positive().optional().nullable(),
   defaultCommissionPct: z.coerce.number().min(1).max(100).optional().nullable(),
-  correoApiKey:         z.string().optional().nullable(),
-  andreaniApiKey:       z.string().optional().nullable(),
+  zipnovaDiscountPctHome:   z.coerce.number().min(0).max(50).optional(),
+  zipnovaDiscountPctBranch: z.coerce.number().min(0).max(50).optional(),
   termsContent:         z.string().optional(),
 
   // Landing
@@ -74,12 +74,7 @@ export async function getConfig(_req: Request, res: Response): Promise<void> {
     create: { id: 'singleton' },
   })
 
-  // Never expose raw API keys to the frontend — mask them
-  ok(res, {
-    ...config,
-    correoApiKey:   config.correoApiKey   ? '••••••••' : null,
-    andreaniApiKey: config.andreaniApiKey ? '••••••••' : null,
-  })
+  ok(res, config)
 }
 
 export async function updateConfig(req: Request, res: Response): Promise<void> {
@@ -173,11 +168,7 @@ export async function updateConfig(req: Request, res: Response): Promise<void> {
     create: { id: 'singleton', ...sanitized, ...termsUpdate },
   })
 
-  ok(res, {
-    ...config,
-    correoApiKey:   config.correoApiKey   ? '••••••••' : null,
-    andreaniApiKey: config.andreaniApiKey ? '••••••••' : null,
-  })
+  ok(res, config)
 }
 
 /**

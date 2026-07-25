@@ -24,7 +24,9 @@ axiosClient.interceptors.response.use(
   async error => {
     const originalRequest = error.config
 
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    // Solo intentar refresh si hay un usuario autenticado (no en rutas públicas)
+    const hasSession = !!useAuthStore.getState().accessToken || !!useAuthStore.getState().user
+    if (error.response?.status !== 401 || originalRequest._retry || !hasSession) {
       return Promise.reject(error)
     }
 

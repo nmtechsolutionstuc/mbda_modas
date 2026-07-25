@@ -2,6 +2,7 @@ import { Router } from 'express'
 import {
   getPublicCatalog, getPublicProduct,
   createOrder, getPublicConfig, getLandingContent, getPublicTerms,
+  getShippingCost,
 } from '../controllers/public.controller'
 
 const router = Router()
@@ -12,5 +13,6 @@ router.post('/orders',                       createOrder)
 router.get('/config',                        getPublicConfig)
 router.get('/landing',                       getLandingContent)
 router.get('/terms',                         getPublicTerms)
+router.get('/shipping/calculate',            getShippingCost)
 
 export default router
