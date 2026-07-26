@@ -287,6 +287,19 @@ Estos Términos y Condiciones se rigen por las leyes de la **República Argentin
 
 ---
 
+## 20. Retiro en el Local, Feed de Prendas Propias y Vales de Cambio
+
+- Una vez que el Revendedor retira la prenda del local con su comprobante de retiro, **MBDA no se responsabiliza por la entrega final al Comprador**; esa entrega es responsabilidad exclusiva del Revendedor.
+- El precio exhibido en el local físico es el precio oficial de MBDA. Cualquier diferencia de precio en una venta online respecto de ese precio es responsabilidad exclusiva del Revendedor que la fijó.
+- Los usuarios registrados son los únicos responsables de las prendas propias que publiquen en el feed "Prendas en Promo". MBDA solo modera su publicación y no participa de la venta ni de la relación comercial entre el usuario y su comprador.
+- Los productos de MBDA pueden agotarse sin previo aviso.
+- Una vez retirada y abonada la prenda, no se aceptan devoluciones de dinero. Se acepta el cambio por otra prenda disponible en el local o, si no hay ninguna disponible en el momento, la emisión de un **vale sin vencimiento** por el monto pagado.
+- Los vales son **personales e intransferibles**.
+- MBDA puede cancelar cualquier venta en cualquier momento por causas justificadas (por ejemplo, prenda dañada o error de stock), reintegrando el stock correspondiente.
+- MBDA puede dar de baja cualquier cuenta, producto o publicación sin previo aviso ante el incumplimiento de cualquiera de estos Términos.
+
+---
+
 *Al hacer clic en "Crear cuenta gratis" confirmás que leíste y aceptaste íntegramente estos Términos y Condiciones.*`
 
 const DEFAULT_CONTENT = TERMS_CONTENT
