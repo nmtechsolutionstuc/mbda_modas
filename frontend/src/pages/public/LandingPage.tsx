@@ -42,18 +42,27 @@ function FeedCard({ item, mbdaWhatsapp, isReseller }: { item: FeedItem; mbdaWhat
         </span>
       </div>
       <div style={{ padding: '1rem' }}>
-        <p style={{ fontWeight: 700, color: '#111', fontSize: '0.9375rem', marginBottom: '0.25rem' }}>{item.name}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+          <p style={{ fontWeight: 700, color: '#111', fontSize: '0.9375rem' }}>{item.name}</p>
+          {item.type === 'MBDA' && !item.inStock && (
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.55rem', borderRadius: '99px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+              Agotado
+            </span>
+          )}
+        </div>
         <p style={{ fontWeight: 700, color: '#b8922a', fontSize: '1.0625rem', marginBottom: '0.75rem' }}>${item.price.toLocaleString('es-AR')}</p>
 
         {item.type === 'MBDA' ? (
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <a
-              href={linkWhatsApp(mbdaWhatsapp, `Hola! Vi "${item.name}" en Prendas en Promo y quiero comprarlo.`)}
-              target="_blank" rel="noopener noreferrer"
-              style={{ flex: '1 1 100px', textAlign: 'center', padding: '0.5rem', borderRadius: '0.5rem', background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: '0.8125rem', textDecoration: 'none' }}
-            >
-              📲 Comprar
-            </a>
+            {item.inStock && (
+              <a
+                href={linkWhatsApp(mbdaWhatsapp, `Hola! Vi "${item.name}" en Prendas en Promo y quiero comprarlo.`)}
+                target="_blank" rel="noopener noreferrer"
+                style={{ flex: '1 1 100px', textAlign: 'center', padding: '0.5rem', borderRadius: '0.5rem', background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: '0.8125rem', textDecoration: 'none' }}
+              >
+                📲 Comprar
+              </a>
+            )}
             <Link
               to={isReseller ? '/panel/catalogo' : '/registro'}
               style={{ flex: '1 1 130px', textAlign: 'center', padding: '0.5rem', borderRadius: '0.5rem', border: '1.5px solid #b8922a', color: '#b8922a', fontWeight: 600, fontSize: '0.8125rem', textDecoration: 'none' }}

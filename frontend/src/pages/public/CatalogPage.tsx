@@ -99,6 +99,11 @@ function ProductCard({ product, resellerWhatsapp, storeName, shippingEnabled, ca
             ? <img src={photo} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '3rem' }}>🧥</div>
           }
+          {product.variants.every(v => v.stock === 0) && (
+            <span style={{ position: 'absolute', top: '0.5rem', left: '0.5rem', background: '#dc2626', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px' }}>
+              Agotado
+            </span>
+          )}
         </div>
         <div style={{ padding: '0.875rem' }}>
           <p style={{ fontWeight: 700, color: '#111', fontSize: '0.9375rem', marginBottom: '0.25rem' }}>{product.name}</p>

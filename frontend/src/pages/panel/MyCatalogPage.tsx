@@ -247,9 +247,14 @@ function EditPriceRow({ item, onSaved, onRemove }: {
       <div style={{ flex: 1, padding: '0.875rem 1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', flexWrap: 'wrap' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
               <p style={{ fontWeight: 700, color: '#111', fontSize: '0.9375rem' }}>{item.product.name}</p>
               <ModeBadge mode={item.saleMode} />
+              {totalStock === 0 && (
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.55rem', borderRadius: '99px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                  Agotado
+                </span>
+              )}
             </div>
             <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>
               {item.product.category.name} · {totalStock} en stock
