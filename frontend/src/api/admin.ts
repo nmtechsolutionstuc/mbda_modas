@@ -75,6 +75,7 @@ export interface Config {
   stockReserveHours: number
   maxCashDeliveryDays: number
   shippingEnabled: boolean
+  pickupExpiryHours: number
   defaultWeightGrams: number | null
   defaultCommissionPct: string | null
   zipnovaDiscountPctHome: string
@@ -299,6 +300,32 @@ export async function downloadShippingLabel(orderId: string): Promise<{ blob: Bl
   })
   const trackingNumber = response.headers['x-tracking-number'] as string | undefined
   return { blob: response.data as Blob, trackingNumber: trackingNumber ?? null }
+}
+
+// ── Retiros pendientes ────────────────────────────────────────────────────────
+
+export interface PendingPickup {
+  id: string
+  orderNumber: string
+  buyerName: string
+  buyerWhatsapp: string
+  pickupBy: 'BUYER' | 'RESELLER'
+  paymentMethod: 'TRANSFER' | 'CASH' | null
+  cashDueDate: string | null
+  pickupDeadline: string | null
+  total: string
+  reseller: { id: string; storeName: string; whatsapp: string }
+  items: OrderItem[]
+}
+
+export async function getPendingPickups(): Promise<PendingPickup[]> {
+  const { data } = await axiosClient.get<{ success: true; data: PendingPickup[] }>('/admin/pickups')
+  return data.data
+}
+
+export async function markPickedUp(id: string): Promise<PendingPickup> {
+  const { data } = await axiosClient.patch<{ success: true; data: PendingPickup }>(`/admin/pickups/${id}/picked-up`)
+  return data.data
 }
 
 // ── Comisiones ────────────────────────────────────────────────────────────────

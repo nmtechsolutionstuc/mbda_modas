@@ -238,6 +238,7 @@ model Order {
   pickupBy          PickupBy       @default(BUYER)   // quién retira en el local: el comprador o el revendedor
   paymentMethod     PaymentMethod?                    // cómo pagó el comprador (flujo de reserva del revendedor)
   cashDueDate       DateTime?                         // fecha tope de entrega/cobro cuando paymentMethod=CASH
+  pickupDeadline    DateTime?                         // vencimiento del retiro en el local (seteado al confirmar)
   subtotal         Decimal        @db.Decimal(12, 2)
   total            Decimal        @db.Decimal(12, 2)
   status           OrderStatus    @default(PENDING)
@@ -333,6 +334,7 @@ model Config {
   stockReserveHours    Int       @default(24)
   maxCashDeliveryDays  Int       @default(2)
   shippingEnabled      Boolean   @default(false)
+  pickupExpiryHours    Int       @default(48)
   defaultWeightGrams   Int?
   defaultDimH          Decimal?  @db.Decimal(6, 2)
   defaultDimW          Decimal?  @db.Decimal(6, 2)

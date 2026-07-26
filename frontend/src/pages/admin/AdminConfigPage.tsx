@@ -231,6 +231,7 @@ export function AdminConfigPage() {
   const [dispatchDays, setDispatchDays] = useState(3)
   const [stockReserveHours, setStockReserveHours] = useState(24)
   const [maxCashDeliveryDays, setMaxCashDeliveryDays] = useState(2)
+  const [pickupExpiryHours, setPickupExpiryHours] = useState(48)
   const [defaultCommissionPct, setDefaultCommissionPct] = useState('')
   const [zipnovaDiscountPctHome, setZipnovaDiscountPctHome] = useState('')
   const [zipnovaDiscountPctBranch, setZipnovaDiscountPctBranch] = useState('')
@@ -253,6 +254,7 @@ export function AdminConfigPage() {
         setDispatchDays(c.dispatchDays)
         setStockReserveHours(c.stockReserveHours)
         setMaxCashDeliveryDays(c.maxCashDeliveryDays)
+        setPickupExpiryHours(c.pickupExpiryHours)
         setDefaultCommissionPct(String(c.defaultCommissionPct ?? ''))
         setZipnovaDiscountPctHome(String(c.zipnovaDiscountPctHome ?? '0'))
         setZipnovaDiscountPctBranch(String(c.zipnovaDiscountPctBranch ?? '0'))
@@ -370,7 +372,7 @@ export function AdminConfigPage() {
         {/* ── Pedidos y stock ──────────────────────────────────────────────── */}
         <Section title="📦 Pedidos y stock">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={LABEL}>Días de despacho</label>
                 <input value={dispatchDays} onChange={e => setDispatchDays(Number(e.target.value))} type="number" min="1" max="30" style={INP} />
@@ -383,14 +385,21 @@ export function AdminConfigPage() {
                 <label style={LABEL}>Comisión por defecto (%)</label>
                 <input value={defaultCommissionPct} onChange={e => setDefaultCommissionPct(e.target.value)} type="number" min="1" max="100" style={INP} placeholder="20" />
               </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={LABEL}>Tope pago en efectivo (días)</label>
                 <input value={maxCashDeliveryDays} onChange={e => setMaxCashDeliveryDays(Number(e.target.value))} type="number" min="1" max="30" style={INP} />
+              </div>
+              <div>
+                <label style={LABEL}>Vencimiento del retiro en el local (horas)</label>
+                <input value={pickupExpiryHours} onChange={e => setPickupExpiryHours(Number(e.target.value))} type="number" min="1" max="720" style={INP} />
               </div>
             </div>
             <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
               Pedidos PENDING sin confirmación en {stockReserveHours}h son cancelados automáticamente y el stock se libera.
               Cuando un revendedor marca una venta como pagada en efectivo, la fecha de entrega no puede superar los {maxCashDeliveryDays} días.
+              Una vez confirmada la venta, si nadie retira la prenda en {pickupExpiryHours}hs el pedido se cancela y el stock vuelve a estar disponible.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
@@ -400,6 +409,7 @@ export function AdminConfigPage() {
                   stockReserveHours,
                   defaultCommissionPct: defaultCommissionPct ? Number(defaultCommissionPct) : null,
                   maxCashDeliveryDays,
+                  pickupExpiryHours,
                 })}
                 style={{ ...BTN_PRIMARY, opacity: saving === 'orders' ? 0.6 : 1 }}
               >

@@ -25,6 +25,7 @@ import {
   markProofAction, rejectPaymentAction, cancelItemAction,
   getShippingLabel,
   listCommissions, markCommissionPaid,
+  getPendingPickupsHandler, markPickedUpAction,
 } from '../controllers/admin.order.controller'
 import {
   listResellers, deactivateReseller,
@@ -72,6 +73,10 @@ router.patch('/orders/:id/dispatch',            adminOnly, dispatchOrderAction)
 router.patch('/orders/:id/cancel',              adminOnly, cancelOrderAction)
 router.patch('/orders/:id/items/:itemId/cancel', adminOnly, cancelItemAction)
 router.get('/orders/:id/label',                  adminOnly, getShippingLabel)
+
+// ── Retiros pendientes (ADMIN y SUBADMIN) ─────────────────────────────────────
+router.get('/pickups',                 adminOrSub, getPendingPickupsHandler)
+router.patch('/pickups/:id/picked-up', adminOrSub, markPickedUpAction)
 
 // ── Comisiones (solo ADMIN) ───────────────────────────────────────────────────
 router.get('/commissions',                 adminOnly, listCommissions)

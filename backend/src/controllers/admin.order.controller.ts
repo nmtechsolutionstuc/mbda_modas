@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler'
 import {
   listOrders, getOrder, confirmOrder, dispatchOrder, cancelOrder,
   markProofReceived, rejectPayment, cancelOrderItem,
+  getPendingPickups, markPickedUp,
 } from '../services/order.service'
 import {
   linkPagoConfirmado, linkPedidoDespachado,
@@ -108,6 +109,18 @@ export const rejectPaymentAction = asyncHandler(async (req: Request, res: Respon
 
 export const cancelItemAction = asyncHandler(async (req: Request, res: Response) => {
   const order = await cancelOrderItem(req.params.id, req.params.itemId)
+  ok(res, order)
+})
+
+// ── Retiros en el local ───────────────────────────────────────────────────────
+
+export const getPendingPickupsHandler = asyncHandler(async (_req: Request, res: Response) => {
+  const pickups = await getPendingPickups()
+  ok(res, pickups)
+})
+
+export const markPickedUpAction = asyncHandler(async (req: Request, res: Response) => {
+  const order = await markPickedUp(req.params.id)
   ok(res, order)
 })
 

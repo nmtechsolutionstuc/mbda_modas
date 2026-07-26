@@ -225,11 +225,15 @@ export async function confirmOrder(
     throw Object.assign(new Error('El pedido no se puede confirmar en su estado actual'), { status: 400 })
   }
 
+  const config = await prisma.config.findFirst()
+  const pickupDeadline = new Date(Date.now() + (config?.pickupExpiryHours ?? 48) * 60 * 60 * 1000)
+
   return await prisma.$transaction(async tx => {
     await tx.order.update({
       where: { id: orderId },
       data: {
         status: 'CONFIRMED',
+        pickupDeadline,
         ...(opts?.paymentMethod && { paymentMethod: opts.paymentMethod }),
         ...(opts?.cashDueDate && { cashDueDate: opts.cashDueDate }),
       },
@@ -493,4 +497,57 @@ export async function resellerCancelReservation(resellerId: string, orderId: str
     throw Object.assign(new Error('Solo podés cancelar reservas pendientes de pago'), { status: 400 })
   }
   return cancelOrder(orderId, 'Cancelado por el revendedor')
+}
+
+// ── Retiros en el local (Modificación 3 + 7) ──────────────────────────────────
+
+/** Cancela pedidos CONFIRMED cuyo plazo de retiro venció y libera el stock */
+export async function lazyExpirePickups() {
+  const expired = await prisma.order.findMany({
+    where: { status: 'CONFIRMED', pickupDeadline: { lt: new Date() } },
+    include: { items: true },
+  })
+
+  for (const order of expired) {
+    await prisma.$transaction(async tx => {
+      for (const item of order.items.filter(i => !i.cancelled)) {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stock: { increment: item.quantity } },
+        })
+      }
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: 'CANCELLED', cancelReason: 'Vencido: no fue retirado dentro del plazo' },
+      })
+    })
+  }
+}
+
+/** Pedidos confirmados a la espera de ser retirados en el local, ordenados por vencimiento */
+export async function getPendingPickups() {
+  await lazyExpirePickups()
+
+  return prisma.order.findMany({
+    where: { status: 'CONFIRMED' },
+    include: {
+      reseller: { select: { id: true, storeName: true, whatsapp: true } },
+      items: true,
+    },
+    orderBy: { pickupDeadline: 'asc' },
+  })
+}
+
+/** Marca el pedido como retirado en el local (reutiliza el estado DISPATCHED) */
+export async function markPickedUp(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId } })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status !== 'CONFIRMED') {
+    throw Object.assign(new Error('Solo se pueden marcar como retirados los pedidos confirmados'), { status: 400 })
+  }
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { status: 'DISPATCHED' },
+    include: { reseller: true, items: true },
+  })
 }

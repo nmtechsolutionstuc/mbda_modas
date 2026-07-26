@@ -22,6 +22,7 @@ import { AdminLandingPage } from './pages/admin/AdminLandingPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminResellersPage } from './pages/admin/AdminResellersPage'
 import { AdminSubAdminsPage } from './pages/admin/AdminSubAdminsPage'
+import { AdminPickupsPage } from './pages/admin/AdminPickupsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 function App() {
@@ -50,6 +51,7 @@ function App() {
                 {/* Admin — accesibles por ADMIN y SUBADMIN */}
                 <Route path="/admin"               element={<AdminRoute><AdminDashboard /></AdminRoute>} />
                 <Route path="/admin/productos"     element={<AdminRoute><AdminProductsPage /></AdminRoute>} />
+                <Route path="/admin/retiros"       element={<AdminRoute><AdminPickupsPage /></AdminRoute>} />
 
                 {/* Admin — solo ADMIN */}
                 <Route path="/admin/configuracion" element={<AdminOnlyRoute><AdminConfigPage /></AdminOnlyRoute>} />
