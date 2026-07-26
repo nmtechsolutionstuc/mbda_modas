@@ -1,11 +1,20 @@
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { logoutApi } from '../../api/auth'
+import { getPublicConfig } from '../../api/public'
 import { isReseller } from '../../types'
 
 export function Navbar() {
   const { user, clearAuth } = useAuthStore()
   const navigate = useNavigate()
+  const [helpUrl, setHelpUrl] = useState('')
+
+  useEffect(() => {
+    if (user?.role === 'RESELLER') {
+      getPublicConfig().then(c => setHelpUrl(c.helpUrl)).catch(() => {/* silencioso */})
+    }
+  }, [user?.role])
 
   async function handleLogout() {
     try { await logoutApi() } catch { /* ignorar errores de red */ }
@@ -85,6 +94,11 @@ export function Navbar() {
             <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
               {isReseller(user) ? user.storeName : ''}
             </span>
+            {helpUrl && (
+              <a href={helpUrl} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, color: '#b8922a' }}>
+                ¿Tenés dudas?
+              </a>
+            )}
             <button onClick={handleLogout} style={{ ...linkStyle, background: 'none', border: 'none', cursor: 'pointer' }}>
               Salir
             </button>

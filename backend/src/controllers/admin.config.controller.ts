@@ -32,6 +32,9 @@ const UpdateConfigSchema = z.object({
   feedMaxItems:        z.coerce.number().int().min(1).max(200).optional(),
   feedMaxPerReseller:  z.coerce.number().int().min(1).max(20).optional(),
   autoApproveListings: z.boolean().optional(),
+
+  // Ayuda
+  helpUrl: z.string().max(300).optional(),
   defaultWeightGrams:   z.coerce.number().int().positive().optional().nullable(),
   defaultCommissionPct: z.coerce.number().min(1).max(100).optional().nullable(),
   zipnovaDiscountPctHome:   z.coerce.number().min(0).max(50).optional(),

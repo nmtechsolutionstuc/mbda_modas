@@ -228,6 +228,18 @@ export const removeMyListing = asyncHandler(async (req: Request, res: Response) 
   ok(res, { message: 'Prenda eliminada' })
 })
 
+// ── Onboarding ───────────────────────────────────────────────────────────────
+
+export const markOnboardingSeen = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const updated = await prisma.reseller.update({
+    where: { id: resellerId },
+    data: { onboardingSeenAt: new Date() },
+    select: { id: true, onboardingSeenAt: true },
+  })
+  ok(res, updated)
+})
+
 // ── Perfil ───────────────────────────────────────────────────────────────────
 
 export const updateProfile = asyncHandler(async (req: Request, res: Response) => {

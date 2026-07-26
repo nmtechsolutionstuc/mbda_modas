@@ -106,6 +106,7 @@ model Reseller {
   referralCode    String    @unique
   isActive        Boolean   @default(true)
   termsAcceptedAt DateTime
+  onboardingSeenAt DateTime? // null = todavía no vio la pantalla de bienvenida
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -404,6 +405,9 @@ model Config {
   feedMaxItems         Int       @default(20)
   feedMaxPerReseller   Int       @default(3)
   autoApproveListings  Boolean   @default(false)
+
+  // ── Ayuda ────────────────────────────────────────────────────
+  helpUrl              String    @default("")
   defaultWeightGrams   Int?
   defaultDimH          Decimal?  @db.Decimal(6, 2)
   defaultDimW          Decimal?  @db.Decimal(6, 2)

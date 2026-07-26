@@ -243,6 +243,7 @@ export function AdminConfigPage() {
   const [feedMaxItems, setFeedMaxItems] = useState(20)
   const [feedMaxPerReseller, setFeedMaxPerReseller] = useState(3)
   const [autoApproveListings, setAutoApproveListings] = useState(false)
+  const [helpUrl, setHelpUrl] = useState('')
 
   // Terms
   const [termsContent, setTermsContent] = useState('')
@@ -271,6 +272,7 @@ export function AdminConfigPage() {
         setFeedMaxItems(c.feedMaxItems)
         setFeedMaxPerReseller(c.feedMaxPerReseller)
         setAutoApproveListings(c.autoApproveListings)
+        setHelpUrl(c.helpUrl)
         setTermsContent(c.termsContent ?? '')
       })
       .catch(() => showToast('Error al cargar configuración', 'error'))
@@ -520,6 +522,28 @@ export function AdminConfigPage() {
                 style={{ ...BTN_PRIMARY, opacity: saving === 'feed' ? 0.6 : 1 }}
               >
                 {saving === 'feed' ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </Section>
+
+        {/* ── Ayuda ────────────────────────────────────────────────────────── */}
+        <Section title="🆘 Ayuda">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            <div>
+              <label style={LABEL}>Link de la guía de ayuda</label>
+              <input value={helpUrl} onChange={e => setHelpUrl(e.target.value)} style={INP} placeholder="https://... o https://wa.me/..." />
+            </div>
+            <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+              Se muestra como "¿Tenés dudas? Ver guía completa" en el panel de los revendedores.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                disabled={saving === 'help'}
+                onClick={() => doSave('help', { helpUrl })}
+                style={{ ...BTN_PRIMARY, opacity: saving === 'help' ? 0.6 : 1 }}
+              >
+                {saving === 'help' ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
           </div>

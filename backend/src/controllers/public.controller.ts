@@ -155,7 +155,7 @@ export const getPublicConfig = asyncHandler(async (_req: Request, res: Response)
   const config = await prisma.config.findFirst({
     select: {
       cbu: true, alias: true, whatsapp: true, dispatchDays: true,
-      maxCashDeliveryDays: true, shippingEnabled: true,
+      maxCashDeliveryDays: true, shippingEnabled: true, helpUrl: true,
       // Defaults para cálculo de envío cuando el producto no tiene medidas propias
       defaultWeightGrams: true,
       defaultDimH: true, defaultDimW: true, defaultDimL: true,

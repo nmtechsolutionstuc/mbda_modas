@@ -83,6 +83,7 @@ export interface Config {
   feedMaxItems: number
   feedMaxPerReseller: number
   autoApproveListings: boolean
+  helpUrl: string
   defaultWeightGrams: number | null
   defaultCommissionPct: string | null
   zipnovaDiscountPctHome: string

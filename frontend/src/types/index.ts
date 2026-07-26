@@ -26,6 +26,7 @@ export interface ResellerUser {
   alias: string | null
   referralCode: string
   isActive: boolean
+  onboardingSeenAt: string | null
   role: 'RESELLER'
 }
 

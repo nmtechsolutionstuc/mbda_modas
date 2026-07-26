@@ -75,6 +75,7 @@ function resellerToPublic(r: Reseller) {
     whatsapp: r.whatsapp,
     referralCode: r.referralCode,
     isActive: r.isActive,
+    onboardingSeenAt: r.onboardingSeenAt,
     role: 'RESELLER' as const,
   }
 }

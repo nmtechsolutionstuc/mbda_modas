@@ -46,6 +46,7 @@ export interface PublicConfig {
   dispatchDays: number
   maxCashDeliveryDays: number
   shippingEnabled: boolean
+  helpUrl: string
   // Defaults para envío cuando el producto no tiene medidas propias
   defaultWeightGrams: number | null
   defaultDimH: number | null

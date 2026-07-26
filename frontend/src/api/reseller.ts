@@ -207,6 +207,14 @@ export function removeListing(id: string): Promise<void> {
     .then(() => undefined)
 }
 
+// ── Onboarding ─────────────────────────────────────────────────────────────────
+
+export function markOnboardingSeen(): Promise<{ id: string; onboardingSeenAt: string }> {
+  return axiosClient
+    .patch<ApiResponse<{ id: string; onboardingSeenAt: string }>>('/reseller/onboarding/seen')
+    .then(r => r.data.data)
+}
+
 // ── Perfil ───────────────────────────────────────────────────────────────────
 
 export function updateProfile(data: FormData): Promise<ResellerProfile> {

@@ -1,7 +1,48 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../../context/ToastContext'
 import { isReseller } from '../../types'
+import { markOnboardingSeen } from '../../api/reseller'
+
+const ONBOARDING_STEPS = [
+  { icon: '🎽', title: 'Subí tus propios productos al feed', desc: 'Publicá hasta unas pocas prendas propias en la vitrina "Prendas en Promo" y coordiná la venta directo por WhatsApp.' },
+  { icon: '🛍️', title: 'Revendé productos de MBDA', desc: 'Agregalos a tu catálogo, elegí si es venta presencial u online, y compartí tu link único.' },
+  { icon: '💰', title: 'Cómo funciona el precio y la comisión', desc: 'En modo presencial ganás una comisión fija. En modo online, vos ponés el precio y te quedás con la diferencia (o la comisión si vendés al precio base).' },
+  { icon: '🏪', title: 'Cómo se hace un retiro en el local', desc: 'Cuando confirmás una venta, se genera un comprobante de retiro. Vos o el comprador lo muestran en el local para retirar la prenda dentro del plazo.' },
+]
+
+function OnboardingModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ background: '#fff', borderRadius: '1.25rem', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem 1.75rem' }}>
+        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: 700, color: '#111', marginBottom: '0.375rem', textAlign: 'center' }}>
+          ¡Bienvenido a MBDA! 🎉
+        </h2>
+        <p style={{ color: '#6b7280', textAlign: 'center', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+          Esto es lo que podés hacer desde tu panel:
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.75rem' }}>
+          {ONBOARDING_STEPS.map((step, i) => (
+            <div key={i} style={{ display: 'flex', gap: '0.875rem', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>{step.icon}</span>
+              <div>
+                <p style={{ fontWeight: 700, color: '#111', fontSize: '0.9375rem', marginBottom: '0.25rem' }}>{step.title}</p>
+                <p style={{ fontSize: '0.8125rem', color: '#6b7280', lineHeight: 1.5 }}>{step.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={onClose}
+          style={{ width: '100%', padding: '0.875rem', borderRadius: '0.75rem', border: 'none', background: '#111', color: '#f5f3ef', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}
+        >
+          Entendido, ¡empecemos!
+        </button>
+      </div>
+    </div>
+  )
+}
 
 interface MenuItem { title: string; desc: string; icon: string; href: string; active: boolean; phase?: string }
 const MENU: MenuItem[] = [
@@ -13,12 +54,21 @@ const MENU: MenuItem[] = [
 ]
 
 export function PanelDashboard() {
-  const { user } = useAuthStore()
+  const { user, setUser } = useAuthStore()
   const { showToast } = useToast()
   const reseller = user && isReseller(user) ? user : null
   const name      = reseller?.firstName ?? 'Revendedor'
   const storeName = reseller?.storeName ?? ''
   const refCode   = reseller?.referralCode ?? ''
+  const [showOnboarding, setShowOnboarding] = useState(!!reseller && !reseller.onboardingSeenAt)
+
+  async function closeOnboarding() {
+    setShowOnboarding(false)
+    try {
+      const updated = await markOnboardingSeen()
+      if (reseller) setUser({ ...reseller, onboardingSeenAt: updated.onboardingSeenAt })
+    } catch { /* si falla, se le vuelve a mostrar en el próximo ingreso */ }
+  }
 
   return (
     <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
@@ -96,6 +146,8 @@ export function PanelDashboard() {
           ))}
         </div>
       </div>
+
+      {showOnboarding && <OnboardingModal onClose={closeOnboarding} />}
     </div>
   )
 }

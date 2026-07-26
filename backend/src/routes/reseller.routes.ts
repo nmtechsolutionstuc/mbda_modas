@@ -19,6 +19,7 @@ import {
   createMyListing,
   markMyListingSold,
   removeMyListing,
+  markOnboardingSeen,
 } from '../controllers/reseller.controller'
 
 const router = Router()
@@ -33,6 +34,9 @@ router.get('/products',      getMyProducts)
 router.post('/catalog',      addToCatalog)
 router.patch('/catalog/:id', updateCatalogItem)
 router.delete('/catalog/:id', removeCatalogItem)
+
+// Onboarding
+router.patch('/onboarding/seen', markOnboardingSeen)
 
 // Perfil
 router.patch('/profile', upload.single('storePhoto'), updateProfile)
