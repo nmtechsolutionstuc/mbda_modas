@@ -15,6 +15,9 @@ import {
   resellerMarkSold,
   resellerCancelReservation,
 } from '../services/order.service'
+import {
+  createListing, listMyListings, markListingSold, deleteListing,
+} from '../services/listing.service'
 import { persistPhotos, deletePhoto } from '../services/upload.service'
 
 // ── Categorías accesibles por revendedor ────────────────────────────────────
@@ -189,6 +192,40 @@ export const getMyCommissions = asyncHandler(async (req: Request, res: Response)
       paid: Number(paidAgg._sum.amount ?? 0),
     },
   })
+})
+
+// ── Mis prendas (feed "Prendas en Promo") ─────────────────────────────────────
+
+export const getMyListings = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const listings = await listMyListings(resellerId)
+  ok(res, listings)
+})
+
+export const createMyListing = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const schema = z.object({
+    name:        z.string().min(2).max(80),
+    description: z.string().max(300).optional(),
+    price:       z.coerce.number().positive(),
+  })
+  const data = schema.parse(req.body)
+  const files = req.files as Express.Multer.File[] | undefined
+  const photos = await persistPhotos(files ?? [])
+  const listing = await createListing({ resellerId, ...data, photos })
+  created(res, listing)
+})
+
+export const markMyListingSold = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const listing = await markListingSold(resellerId, req.params.id)
+  ok(res, listing)
+})
+
+export const removeMyListing = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  await deleteListing(resellerId, req.params.id)
+  ok(res, { message: 'Prenda eliminada' })
 })
 
 // ── Perfil ───────────────────────────────────────────────────────────────────

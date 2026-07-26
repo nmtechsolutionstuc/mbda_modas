@@ -56,6 +56,7 @@ export async function getAvailableProducts(resellerId: string, opts: {
 
   const where = {
     isActive: true,
+    availableForResellers: true,
     ...(categoryId && { categoryId }),
     ...(search && {
       OR: [
@@ -112,9 +113,9 @@ export async function addProductToCatalog(
   saleMode: 'PRESENCIAL' | 'ONLINE',
 ) {
   const product = await prisma.product.findFirst({
-    where: { id: productId, isActive: true },
+    where: { id: productId, isActive: true, availableForResellers: true },
   })
-  if (!product) throw Object.assign(new Error('Producto no encontrado o inactivo'), { status: 404 })
+  if (!product) throw Object.assign(new Error('Producto no encontrado o no disponible para revendedores'), { status: 404 })
 
   // En modo presencial el precio es siempre el precio fijo del local — no lo define el revendedor
   const finalPrice = saleMode === 'PRESENCIAL' ? Number(product.basePrice) : sellingPrice

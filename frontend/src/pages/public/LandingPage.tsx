@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getPublicLanding, type LandingContent } from '../../api/public'
+import { getPublicLanding, getPublicFeed, type LandingContent, type PublicFeed, type FeedItem } from '../../api/public'
+import { linkWhatsApp } from '../../utils/whatsapp'
+import { useAuthStore } from '../../store/authStore'
 
 // ── Defaults (usados mientras carga o si falla la API) ────────────────────────
 
@@ -20,6 +22,102 @@ const DEFAULTS: LandingContent = {
 }
 
 const STEP_EMOJIS = ['✏️', '🛍️', '🚀']
+
+// ── Feed "Prendas en Promo" ────────────────────────────────────────────────────
+
+type FeedFilter = 'ALL' | 'MBDA' | 'EXTERNAL'
+
+function FeedCard({ item, mbdaWhatsapp, isReseller }: { item: FeedItem; mbdaWhatsapp: string; isReseller: boolean }) {
+  const photo = item.photos[0] ?? null
+
+  return (
+    <div style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e0dbd0', overflow: 'hidden' }}>
+      <div style={{ height: '160px', background: '#f5f3ef', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+        {photo
+          ? <img src={photo} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <span style={{ fontSize: '2.5rem' }}>🧥</span>
+        }
+        <span style={{ position: 'absolute', top: '0.5rem', left: '0.5rem', background: item.type === 'MBDA' ? '#111' : '#b8922a', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px' }}>
+          {item.type === 'MBDA' ? 'MBDA' : item.storeName}
+        </span>
+      </div>
+      <div style={{ padding: '1rem' }}>
+        <p style={{ fontWeight: 700, color: '#111', fontSize: '0.9375rem', marginBottom: '0.25rem' }}>{item.name}</p>
+        <p style={{ fontWeight: 700, color: '#b8922a', fontSize: '1.0625rem', marginBottom: '0.75rem' }}>${item.price.toLocaleString('es-AR')}</p>
+
+        {item.type === 'MBDA' ? (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <a
+              href={linkWhatsApp(mbdaWhatsapp, `Hola! Vi "${item.name}" en Prendas en Promo y quiero comprarlo.`)}
+              target="_blank" rel="noopener noreferrer"
+              style={{ flex: '1 1 100px', textAlign: 'center', padding: '0.5rem', borderRadius: '0.5rem', background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: '0.8125rem', textDecoration: 'none' }}
+            >
+              📲 Comprar
+            </a>
+            <Link
+              to={isReseller ? '/panel/catalogo' : '/registro'}
+              style={{ flex: '1 1 130px', textAlign: 'center', padding: '0.5rem', borderRadius: '0.5rem', border: '1.5px solid #b8922a', color: '#b8922a', fontWeight: 600, fontSize: '0.8125rem', textDecoration: 'none' }}
+            >
+              💰 Revender y ganar
+            </Link>
+          </div>
+        ) : (
+          <a
+            href={linkWhatsApp(item.whatsapp, `Hola! Vi "${item.name}" en Prendas en Promo y quiero comprarlo.`)}
+            target="_blank" rel="noopener noreferrer"
+            style={{ display: 'block', textAlign: 'center', padding: '0.5rem', borderRadius: '0.5rem', background: '#111', color: '#fff', fontWeight: 600, fontSize: '0.8125rem', textDecoration: 'none' }}
+          >
+            📲 Contactar
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FeedSection() {
+  const { user } = useAuthStore()
+  const isReseller = user?.role === 'RESELLER'
+  const [feed, setFeed] = useState<PublicFeed | null>(null)
+  const [filter, setFilter] = useState<FeedFilter>('ALL')
+
+  useEffect(() => {
+    getPublicFeed().then(setFeed).catch(() => { /* silencioso */ })
+  }, [])
+
+  if (!feed || !feed.enabled || feed.items.length === 0) return null
+
+  const filtered = feed.items.filter(i =>
+    filter === 'ALL' ? true : filter === 'MBDA' ? i.type === 'MBDA' : i.type === 'EXTERNAL'
+  )
+
+  return (
+    <section style={{ padding: 'clamp(3rem, 8vw, 5rem) 1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
+      <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(1.75rem, 4vw, 2.25rem)', fontWeight: 700, color: '#111', textAlign: 'center', marginBottom: '1.25rem' }}>
+        {feed.sectionName}
+      </h2>
+
+      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '2rem', flexWrap: 'wrap' }}>
+        {([['ALL', 'Todas'], ['MBDA', 'MBDA'], ['EXTERNAL', 'Otras tiendas']] as const).map(([value, label]) => (
+          <button key={value} onClick={() => setFilter(value)} style={{
+            padding: '0.4rem 0.95rem', borderRadius: '99px', border: '1.5px solid', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
+            borderColor: filter === value ? '#111' : '#e0dbd0',
+            background: filter === value ? '#111' : '#fff',
+            color: filter === value ? '#fff' : '#6b7280',
+          }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+        {filtered.map(item => (
+          <FeedCard key={`${item.type}-${item.id}`} item={item} mbdaWhatsapp={feed.mbdaWhatsapp} isReseller={isReseller} />
+        ))}
+      </div>
+    </section>
+  )
+}
 
 export function LandingPage() {
   const [content, setContent] = useState<LandingContent>(DEFAULTS)
@@ -192,6 +290,9 @@ export function LandingPage() {
           ))}
         </div>
       </section>
+
+      {/* ── Feed "Prendas en Promo" ───────────────────────────────────────── */}
+      <FeedSection />
 
       {/* ── CTA final ─────────────────────────────────────────────────────── */}
       <section

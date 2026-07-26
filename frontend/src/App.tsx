@@ -15,6 +15,7 @@ import { MyCatalogPage } from './pages/panel/MyCatalogPage'
 import { MyProfilePage } from './pages/panel/MyProfilePage'
 import { MySalesPage } from './pages/panel/MySalesPage'
 import { MyCommissionsPage } from './pages/panel/MyCommissionsPage'
+import { MyListingsPage } from './pages/panel/MyListingsPage'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminProductsPage } from './pages/admin/AdminProductsPage'
 import { AdminConfigPage } from './pages/admin/AdminConfigPage'
@@ -24,6 +25,7 @@ import { AdminResellersPage } from './pages/admin/AdminResellersPage'
 import { AdminSubAdminsPage } from './pages/admin/AdminSubAdminsPage'
 import { AdminPickupsPage } from './pages/admin/AdminPickupsPage'
 import { AdminVouchersPage } from './pages/admin/AdminVouchersPage'
+import { AdminListingsPage } from './pages/admin/AdminListingsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 function App() {
@@ -48,11 +50,13 @@ function App() {
                 <Route path="/panel/perfil"      element={<ProtectedRoute><MyProfilePage /></ProtectedRoute>} />
                 <Route path="/panel/ventas"      element={<ProtectedRoute><MySalesPage /></ProtectedRoute>} />
                 <Route path="/panel/comisiones"  element={<ProtectedRoute><MyCommissionsPage /></ProtectedRoute>} />
+                <Route path="/panel/mis-prendas" element={<ProtectedRoute><MyListingsPage /></ProtectedRoute>} />
 
                 {/* Admin — accesibles por ADMIN y SUBADMIN */}
                 <Route path="/admin"               element={<AdminRoute><AdminDashboard /></AdminRoute>} />
                 <Route path="/admin/productos"     element={<AdminRoute><AdminProductsPage /></AdminRoute>} />
                 <Route path="/admin/retiros"       element={<AdminRoute><AdminPickupsPage /></AdminRoute>} />
+                <Route path="/admin/prendas-feed"  element={<AdminRoute><AdminListingsPage /></AdminRoute>} />
 
                 {/* Admin — solo ADMIN */}
                 <Route path="/admin/configuracion" element={<AdminOnlyRoute><AdminConfigPage /></AdminOnlyRoute>} />

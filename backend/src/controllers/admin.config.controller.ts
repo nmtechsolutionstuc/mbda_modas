@@ -25,6 +25,13 @@ const UpdateConfigSchema = z.object({
   maxCashDeliveryDays:  z.coerce.number().int().min(1).max(30).optional(),
   pickupExpiryHours:    z.coerce.number().int().min(1).max(720).optional(),
   shippingEnabled:      z.boolean().optional(),
+
+  // Feed "Prendas en Promo"
+  feedEnabled:         z.boolean().optional(),
+  feedSectionName:     z.string().min(1).max(60).optional(),
+  feedMaxItems:        z.coerce.number().int().min(1).max(200).optional(),
+  feedMaxPerReseller:  z.coerce.number().int().min(1).max(20).optional(),
+  autoApproveListings: z.boolean().optional(),
   defaultWeightGrams:   z.coerce.number().int().positive().optional().nullable(),
   defaultCommissionPct: z.coerce.number().min(1).max(100).optional().nullable(),
   zipnovaDiscountPctHome:   z.coerce.number().min(0).max(50).optional(),

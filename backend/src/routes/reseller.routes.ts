@@ -15,6 +15,10 @@ import {
   createMyReservation,
   markMyOrderSold,
   cancelMyOrder,
+  getMyListings,
+  createMyListing,
+  markMyListingSold,
+  removeMyListing,
 } from '../controllers/reseller.controller'
 
 const router = Router()
@@ -39,5 +43,11 @@ router.post('/orders',             createMyReservation)
 router.patch('/orders/:id/sold',   markMyOrderSold)
 router.patch('/orders/:id/cancel', cancelMyOrder)
 router.get('/commissions', getMyCommissions)
+
+// Mis prendas (feed "Prendas en Promo")
+router.get('/listings',              getMyListings)
+router.post('/listings',             upload.array('photos', 2), createMyListing)
+router.patch('/listings/:id/sold',   markMyListingSold)
+router.delete('/listings/:id',       removeMyListing)
 
 export default router

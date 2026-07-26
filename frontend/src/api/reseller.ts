@@ -166,6 +166,47 @@ export function cancelMyOrder(orderId: string): Promise<ReservationOrder> {
     .then(r => r.data.data)
 }
 
+// ── Mis prendas (feed "Prendas en Promo") ─────────────────────────────────────
+
+export type ListingStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
+export interface MyListing {
+  id: string
+  name: string
+  description: string | null
+  price: string
+  photos: string[]
+  status: ListingStatus
+  sold: boolean
+  createdAt: string
+}
+
+export function getMyListings(): Promise<MyListing[]> {
+  return axiosClient
+    .get<ApiResponse<MyListing[]>>('/reseller/listings')
+    .then(r => r.data.data)
+}
+
+export function createListing(data: FormData): Promise<MyListing> {
+  return axiosClient
+    .post<ApiResponse<MyListing>>('/reseller/listings', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then(r => r.data.data)
+}
+
+export function markListingSold(id: string): Promise<MyListing> {
+  return axiosClient
+    .patch<ApiResponse<MyListing>>(`/reseller/listings/${id}/sold`)
+    .then(r => r.data.data)
+}
+
+export function removeListing(id: string): Promise<void> {
+  return axiosClient
+    .delete<ApiResponse<void>>(`/reseller/listings/${id}`)
+    .then(() => undefined)
+}
+
 // ── Perfil ───────────────────────────────────────────────────────────────────
 
 export function updateProfile(data: FormData): Promise<ResellerProfile> {

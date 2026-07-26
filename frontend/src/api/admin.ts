@@ -32,6 +32,8 @@ export interface Product {
   dimW: string | null
   dimL: string | null
   isActive: boolean
+  showInFeed: boolean
+  availableForResellers: boolean
   variants: ProductVariant[]
   _count?: { catalogItems: number }
   createdAt: string
@@ -76,6 +78,11 @@ export interface Config {
   maxCashDeliveryDays: number
   shippingEnabled: boolean
   pickupExpiryHours: number
+  feedEnabled: boolean
+  feedSectionName: string
+  feedMaxItems: number
+  feedMaxPerReseller: number
+  autoApproveListings: boolean
   defaultWeightGrams: number | null
   defaultCommissionPct: string | null
   zipnovaDiscountPctHome: string
@@ -381,6 +388,44 @@ export async function markVoucherUsed(id: string): Promise<Voucher> {
 
 export async function cancelVoucher(id: string): Promise<Voucher> {
   const { data } = await axiosClient.patch<{ success: true; data: Voucher }>(`/admin/vouchers/${id}/cancel`)
+  return data.data
+}
+
+// ── Moderación de prendas del feed ("Prendas en Promo") ───────────────────────
+
+export type ListingStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
+export interface AdminListing {
+  id: string
+  name: string
+  description: string | null
+  price: string
+  photos: string[]
+  status: ListingStatus
+  sold: boolean
+  createdAt: string
+  reseller: { id: string; storeName: string; whatsapp: string }
+}
+
+export interface AdminListingsResponse {
+  listings: AdminListing[]
+  total: number
+  page: number
+  totalPages: number
+}
+
+export async function getAdminListings(params?: { page?: number; limit?: number; status?: ListingStatus }): Promise<AdminListingsResponse> {
+  const { data } = await axiosClient.get<{ success: true; data: AdminListingsResponse }>('/admin/listings', { params })
+  return data.data
+}
+
+export async function approveListing(id: string): Promise<AdminListing> {
+  const { data } = await axiosClient.patch<{ success: true; data: AdminListing }>(`/admin/listings/${id}/approve`)
+  return data.data
+}
+
+export async function rejectListing(id: string): Promise<AdminListing> {
+  const { data } = await axiosClient.patch<{ success: true; data: AdminListing }>(`/admin/listings/${id}/reject`)
   return data.data
 }
 

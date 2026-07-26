@@ -193,6 +193,20 @@ export function AdminProductsPage() {
     loadProducts()
   }
 
+  async function handleToggleShowInFeed(p: Product) {
+    const fd = new FormData()
+    fd.append('showInFeed', String(!p.showInFeed))
+    await updateProduct(p.id, fd)
+    loadProducts()
+  }
+
+  async function handleToggleAvailableForResellers(p: Product) {
+    const fd = new FormData()
+    fd.append('availableForResellers', String(!p.availableForResellers))
+    await updateProduct(p.id, fd)
+    loadProducts()
+  }
+
   // Categorías
   function openCreateCat() { setEditingCat(null); setCatName(''); setCatOrder(categories.length); setCatModal(true) }
   function openEditCat(c: Category) { setEditingCat(c); setCatName(c.name); setCatOrder(c.order); setCatModal(true) }
@@ -306,10 +320,26 @@ export function AdminProductsPage() {
                       <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.875rem' }}>
                         {p.variants.length} variante{p.variants.length !== 1 ? 's' : ''} · en {p._count?.catalogItems ?? 0} catálogo{(p._count?.catalogItems ?? 0) !== 1 ? 's' : ''}
                       </p>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                         <button onClick={() => openEdit(p)} style={{ ...BTN('secondary'), flex: 1 }}>Editar</button>
                         <button onClick={() => handleToggleActive(p)} style={{ ...BTN('secondary') }}>{p.isActive ? 'Desact.' : 'Activar'}</button>
                         <button onClick={() => handleDeleteProduct(p.id)} style={BTN('danger')}>✕</button>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => handleToggleShowInFeed(p)}
+                          style={{ fontSize: '0.7rem', padding: '0.25rem 0.55rem', borderRadius: '99px', border: '1px solid', cursor: 'pointer', fontWeight: 600,
+                            borderColor: p.showInFeed ? '#b8922a' : '#e0dbd0', background: p.showInFeed ? '#fef9ec' : '#fff', color: p.showInFeed ? '#b8922a' : '#9ca3af' }}
+                        >
+                          {p.showInFeed ? '✓ En feed' : 'Mostrar en feed'}
+                        </button>
+                        <button
+                          onClick={() => handleToggleAvailableForResellers(p)}
+                          style={{ fontSize: '0.7rem', padding: '0.25rem 0.55rem', borderRadius: '99px', border: '1px solid', cursor: 'pointer', fontWeight: 600,
+                            borderColor: p.availableForResellers ? '#16a34a' : '#e0dbd0', background: p.availableForResellers ? '#f0fdf4' : '#fff', color: p.availableForResellers ? '#16a34a' : '#9ca3af' }}
+                        >
+                          {p.availableForResellers ? '✓ Para revendedores' : 'No disponible p/revendedores'}
+                        </button>
                       </div>
                     </div>
                   </div>

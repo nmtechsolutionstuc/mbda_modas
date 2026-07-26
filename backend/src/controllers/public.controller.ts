@@ -229,6 +229,63 @@ export const getShippingCost = asyncHandler(async (req: Request, res: Response) 
   }
 })
 
+// ── Feed público "Prendas en Promo" ────────────────────────────────────────────
+
+export const getPublicFeed = asyncHandler(async (_req: Request, res: Response) => {
+  const config = await prisma.config.findFirst({
+    select: { feedEnabled: true, feedSectionName: true, feedMaxItems: true, whatsapp: true },
+  })
+
+  if (!config?.feedEnabled) {
+    return ok(res, { enabled: false, sectionName: config?.feedSectionName ?? 'Prendas en Promo', mbdaWhatsapp: '', items: [] })
+  }
+
+  const maxItems = config.feedMaxItems
+
+  const [mbdaProducts, externalListings] = await Promise.all([
+    prisma.product.findMany({
+      where: { showInFeed: true, isActive: true },
+      include: { variants: { select: { stock: true } } },
+      orderBy: { updatedAt: 'desc' },
+      take: maxItems,
+    }),
+    prisma.userListing.findMany({
+      where: { status: 'APPROVED', sold: false },
+      include: { reseller: { select: { storeName: true, whatsapp: true } } },
+      orderBy: { updatedAt: 'desc' },
+      take: maxItems,
+    }),
+  ])
+
+  const mbdaItems = mbdaProducts.map(p => ({
+    type: 'MBDA' as const,
+    id: p.id,
+    productId: p.id,
+    name: p.name,
+    price: Number(p.basePrice),
+    photos: p.photos.slice(0, 2),
+    inStock: p.variants.some(v => v.stock > 0),
+    updatedAt: p.updatedAt,
+  }))
+
+  const externalItems = externalListings.map(l => ({
+    type: 'EXTERNAL' as const,
+    id: l.id,
+    name: l.name,
+    price: Number(l.price),
+    photos: l.photos.slice(0, 2),
+    storeName: l.reseller.storeName,
+    whatsapp: l.reseller.whatsapp,
+    updatedAt: l.updatedAt,
+  }))
+
+  const items = [...mbdaItems, ...externalItems]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, maxItems)
+
+  ok(res, { enabled: true, sectionName: config.feedSectionName, mbdaWhatsapp: config.whatsapp, items })
+})
+
 // ── Landing page content ──────────────────────────────────────────────────────
 
 export const getLandingContent = asyncHandler(async (_req: Request, res: Response) => {

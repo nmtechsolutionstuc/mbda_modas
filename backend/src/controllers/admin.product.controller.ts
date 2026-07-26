@@ -51,6 +51,8 @@ const UpdateProductSchema = z.object({
   dimW: z.coerce.number().positive().optional().nullable(),
   dimL: z.coerce.number().positive().optional().nullable(),
   isActive: z.preprocess(v => v === 'true' || v === true, z.boolean()).optional(),
+  showInFeed: z.preprocess(v => v === 'true' || v === true, z.boolean()).optional(),
+  availableForResellers: z.preprocess(v => v === 'true' || v === true, z.boolean()).optional(),
   variants: z.preprocess(
     v => (typeof v === 'string' ? JSON.parse(v) : v),
     z.array(VariantSchema).min(1).optional(),

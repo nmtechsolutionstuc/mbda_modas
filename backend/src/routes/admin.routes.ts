@@ -37,6 +37,9 @@ import {
   listVouchersHandler, createVoucherHandler, updateVoucherHandler,
   markVoucherUsedAction, cancelVoucherAction,
 } from '../controllers/admin.voucher.controller'
+import {
+  listListingsHandler, approveListingAction, rejectListingAction,
+} from '../controllers/admin.listing.controller'
 
 const router = Router()
 
@@ -101,5 +104,10 @@ router.post('/vouchers',             adminOnly, createVoucherHandler)
 router.patch('/vouchers/:id',        adminOnly, updateVoucherHandler)
 router.patch('/vouchers/:id/use',    adminOnly, markVoucherUsedAction)
 router.patch('/vouchers/:id/cancel', adminOnly, cancelVoucherAction)
+
+// ── Moderación de prendas externas del feed (ADMIN y SUBADMIN) ───────────────
+router.get('/listings',              adminOrSub, listListingsHandler)
+router.patch('/listings/:id/approve', adminOrSub, approveListingAction)
+router.patch('/listings/:id/reject',  adminOrSub, rejectListingAction)
 
 export default router

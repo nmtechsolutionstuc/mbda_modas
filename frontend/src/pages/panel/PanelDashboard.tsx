@@ -9,6 +9,7 @@ const MENU: MenuItem[] = [
   { title: 'Mi Perfil', desc: 'Editá los datos de tu tienda y datos de cobro', icon: '⚙️', href: '/panel/perfil', active: true },
   { title: 'Mis Ventas', desc: 'Seguí el estado de tus pedidos', icon: '📦', href: '/panel/ventas', active: true },
   { title: 'Mis Comisiones', desc: 'Revisá tus ganancias acumuladas', icon: '💰', href: '/panel/comisiones', active: true },
+  { title: 'Mis Prendas', desc: 'Publicá tus propias prendas en la vitrina', icon: '🎽', href: '/panel/mis-prendas', active: true },
 ]
 
 export function PanelDashboard() {

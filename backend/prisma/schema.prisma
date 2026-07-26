@@ -48,6 +48,12 @@ enum PaymentMethod {
   CASH
 }
 
+enum ListingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum CommissionStatus {
   PENDING
   PAID
@@ -107,6 +113,7 @@ model Reseller {
   catalogItems  CatalogItem[]
   orders        Order[]
   commissions   Commission[]
+  userListings  UserListing[]
 
   @@index([referralCode])
   @@map("resellers")
@@ -166,6 +173,8 @@ model Product {
   kind          ProductKind @default(PHYSICAL)
   ownerId       String?     // Referencia interna opcional (admin)
   isActive      Boolean     @default(true)
+  showInFeed            Boolean @default(false) // aparece en la vitrina pública "Prendas en Promo"
+  availableForResellers Boolean @default(true)  // los revendedores pueden agregarla a su catálogo
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -217,6 +226,29 @@ model CatalogItem {
   @@index([resellerId])
   @@index([productId])
   @@map("catalog_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// USER LISTING — Prenda propia de un usuario/tienda externa en el feed
+// "Prendas en Promo". Venta directa por WhatsApp, no la revende nadie más.
+// ─────────────────────────────────────────────────────────────
+
+model UserListing {
+  id          String        @id @default(uuid())
+  resellerId  String
+  reseller    Reseller      @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Decimal       @db.Decimal(12, 2)
+  photos      String[]      // máx 2, validado en el backend
+  status      ListingStatus @default(PENDING)
+  sold        Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([resellerId])
+  @@index([status])
+  @@map("user_listings")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -365,6 +397,13 @@ model Config {
   maxCashDeliveryDays  Int       @default(2)
   shippingEnabled      Boolean   @default(false)
   pickupExpiryHours    Int       @default(48)
+
+  // ── Feed "Prendas en Promo" ─────────────────────────────────
+  feedEnabled          Boolean   @default(true)
+  feedSectionName      String    @default("Prendas en Promo")
+  feedMaxItems         Int       @default(20)
+  feedMaxPerReseller   Int       @default(3)
+  autoApproveListings  Boolean   @default(false)
   defaultWeightGrams   Int?
   defaultDimH          Decimal?  @db.Decimal(6, 2)
   defaultDimW          Decimal?  @db.Decimal(6, 2)

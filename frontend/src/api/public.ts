@@ -161,3 +161,40 @@ export function getPublicTerms(): Promise<PublicTerms> {
     .get<ApiResponse<PublicTerms>>('/public/terms')
     .then(r => r.data.data)
 }
+
+// ── Feed "Prendas en Promo" ────────────────────────────────────────────────────
+
+export interface FeedItemMbda {
+  type: 'MBDA'
+  id: string
+  productId: string
+  name: string
+  price: number
+  photos: string[]
+  inStock: boolean
+}
+
+export interface FeedItemExternal {
+  type: 'EXTERNAL'
+  id: string
+  name: string
+  price: number
+  photos: string[]
+  storeName: string
+  whatsapp: string
+}
+
+export type FeedItem = FeedItemMbda | FeedItemExternal
+
+export interface PublicFeed {
+  enabled: boolean
+  sectionName: string
+  mbdaWhatsapp: string
+  items: FeedItem[]
+}
+
+export function getPublicFeed(): Promise<PublicFeed> {
+  return axiosClient
+    .get<ApiResponse<PublicFeed>>('/public/feed')
+    .then(r => r.data.data)
+}

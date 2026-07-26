@@ -35,6 +35,8 @@ export interface UpdateProductInput {
   dimW?: number | null
   dimL?: number | null
   isActive?: boolean
+  showInFeed?: boolean
+  availableForResellers?: boolean
   variants?: VariantInput[]
   addPhotos?: string[]
   deletePhotos?: string[]
@@ -144,6 +146,8 @@ export async function updateProduct(id: string, data: UpdateProductInput) {
         ...(data.dimW       !== undefined && { dimW: data.dimW }),
         ...(data.dimL       !== undefined && { dimL: data.dimL }),
         ...(data.isActive   !== undefined && { isActive: data.isActive }),
+        ...(data.showInFeed !== undefined && { showInFeed: data.showInFeed }),
+        ...(data.availableForResellers !== undefined && { availableForResellers: data.availableForResellers }),
         photos,
       },
     })

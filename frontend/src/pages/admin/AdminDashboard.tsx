@@ -9,6 +9,7 @@ interface MenuItem { title: string; desc: string; icon: string; href: string; ac
 const MENU: MenuItem[] = [
   { title: 'Productos', desc: 'Creá y gestioná el catálogo de MBDA', icon: '👗', href: '/admin/productos', active: true },
   { title: 'Retiros', desc: 'Pedidos listos para retirar en el local', icon: '🏷️', href: '/admin/retiros', active: true },
+  { title: 'Prendas del feed', desc: 'Aprobar o rechazar prendas de tiendas externas', icon: '🌟', href: '/admin/prendas-feed', active: true },
   { title: 'Configuración', desc: 'CBU, alias, WhatsApp, pedidos', icon: '⚙️', href: '/admin/configuracion', active: true, adminOnly: true },
   { title: 'Landing Page', desc: 'Editá el contenido de la página de inicio', icon: '🖋️', href: '/admin/landing', active: true, adminOnly: true },
   { title: 'Pedidos', desc: 'Confirmá pagos y despachá pedidos', icon: '📦', href: '/admin/pedidos', active: true, adminOnly: true },

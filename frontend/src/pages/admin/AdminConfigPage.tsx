@@ -237,6 +237,13 @@ export function AdminConfigPage() {
   const [zipnovaDiscountPctBranch, setZipnovaDiscountPctBranch] = useState('')
   const [shippingEnabled, setShippingEnabled] = useState(false)
 
+  // Feed "Prendas en Promo"
+  const [feedEnabled, setFeedEnabled] = useState(true)
+  const [feedSectionName, setFeedSectionName] = useState('Prendas en Promo')
+  const [feedMaxItems, setFeedMaxItems] = useState(20)
+  const [feedMaxPerReseller, setFeedMaxPerReseller] = useState(3)
+  const [autoApproveListings, setAutoApproveListings] = useState(false)
+
   // Terms
   const [termsContent, setTermsContent] = useState('')
 
@@ -259,6 +266,11 @@ export function AdminConfigPage() {
         setZipnovaDiscountPctHome(String(c.zipnovaDiscountPctHome ?? '0'))
         setZipnovaDiscountPctBranch(String(c.zipnovaDiscountPctBranch ?? '0'))
         setShippingEnabled(c.shippingEnabled)
+        setFeedEnabled(c.feedEnabled)
+        setFeedSectionName(c.feedSectionName)
+        setFeedMaxItems(c.feedMaxItems)
+        setFeedMaxPerReseller(c.feedMaxPerReseller)
+        setAutoApproveListings(c.autoApproveListings)
         setTermsContent(c.termsContent ?? '')
       })
       .catch(() => showToast('Error al cargar configuración', 'error'))
@@ -466,6 +478,48 @@ export function AdminConfigPage() {
                 style={{ ...BTN_PRIMARY, opacity: saving === 'shipping' ? 0.6 : 1 }}
               >
                 {saving === 'shipping' ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </Section>
+
+        {/* ── Feed "Prendas en Promo" ──────────────────────────────────────── */}
+        <Section title="🏷️ Feed de prendas destacadas">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={feedEnabled} onChange={e => setFeedEnabled(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+              <span style={{ fontWeight: 600, color: '#111', fontSize: '0.9rem' }}>Feed activo</span>
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={LABEL}>Nombre de la sección</label>
+                <input value={feedSectionName} onChange={e => setFeedSectionName(e.target.value)} style={INP} placeholder="Prendas en Promo" />
+              </div>
+              <div>
+                <label style={LABEL}>Máximo de prendas en el feed</label>
+                <input value={feedMaxItems} onChange={e => setFeedMaxItems(Number(e.target.value))} type="number" min="1" max="200" style={INP} />
+              </div>
+              <div>
+                <label style={LABEL}>Máximo por tienda externa</label>
+                <input value={feedMaxPerReseller} onChange={e => setFeedMaxPerReseller(Number(e.target.value))} type="number" min="1" max="20" style={INP} />
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={autoApproveListings} onChange={e => setAutoApproveListings(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+              <span style={{ fontWeight: 600, color: '#111', fontSize: '0.9rem' }}>Aprobación automática de productos externos</span>
+            </label>
+            <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+              Si está desactivada, cada prenda que suba un usuario queda pendiente hasta que la apruebes en "Prendas del feed".
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                disabled={saving === 'feed'}
+                onClick={() => doSave('feed', {
+                  feedEnabled, feedSectionName, feedMaxItems, feedMaxPerReseller, autoApproveListings,
+                })}
+                style={{ ...BTN_PRIMARY, opacity: saving === 'feed' ? 0.6 : 1 }}
+              >
+                {saving === 'feed' ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
           </div>
