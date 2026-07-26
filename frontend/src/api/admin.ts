@@ -328,6 +328,62 @@ export async function markPickedUp(id: string): Promise<PendingPickup> {
   return data.data
 }
 
+// ── Vales de cambio ───────────────────────────────────────────────────────────
+
+export type VoucherStatus = 'ACTIVE' | 'USED' | 'CANCELLED'
+
+export interface Voucher {
+  id: string
+  buyerName: string
+  buyerWhatsapp: string
+  amount: string
+  status: VoucherStatus
+  note: string | null
+  relatedOrderNumber: string | null
+  createdByAdminName: string
+  createdAt: string
+  usedAt: string | null
+  cancelledAt: string | null
+}
+
+export interface VouchersResponse {
+  vouchers: Voucher[]
+  total: number
+  page: number
+  totalPages: number
+}
+
+export async function getVouchers(params?: { page?: number; limit?: number; search?: string }): Promise<VouchersResponse> {
+  const { data } = await axiosClient.get<{ success: true; data: VouchersResponse }>('/admin/vouchers', { params })
+  return data.data
+}
+
+export async function createVoucher(payload: {
+  buyerName: string
+  buyerWhatsapp: string
+  amount: number
+  note?: string
+  relatedOrderNumber?: string
+}): Promise<Voucher> {
+  const { data } = await axiosClient.post<{ success: true; data: Voucher }>('/admin/vouchers', payload)
+  return data.data
+}
+
+export async function updateVoucher(id: string, payload: { amount?: number; note?: string }): Promise<Voucher> {
+  const { data } = await axiosClient.patch<{ success: true; data: Voucher }>(`/admin/vouchers/${id}`, payload)
+  return data.data
+}
+
+export async function markVoucherUsed(id: string): Promise<Voucher> {
+  const { data } = await axiosClient.patch<{ success: true; data: Voucher }>(`/admin/vouchers/${id}/use`)
+  return data.data
+}
+
+export async function cancelVoucher(id: string): Promise<Voucher> {
+  const { data } = await axiosClient.patch<{ success: true; data: Voucher }>(`/admin/vouchers/${id}/cancel`)
+  return data.data
+}
+
 // ── Comisiones ────────────────────────────────────────────────────────────────
 
 export interface Commission {

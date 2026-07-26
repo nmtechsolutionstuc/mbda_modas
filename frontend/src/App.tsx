@@ -23,6 +23,7 @@ import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminResellersPage } from './pages/admin/AdminResellersPage'
 import { AdminSubAdminsPage } from './pages/admin/AdminSubAdminsPage'
 import { AdminPickupsPage } from './pages/admin/AdminPickupsPage'
+import { AdminVouchersPage } from './pages/admin/AdminVouchersPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 function App() {
@@ -59,6 +60,7 @@ function App() {
                 <Route path="/admin/pedidos"       element={<AdminOnlyRoute><AdminOrdersPage /></AdminOnlyRoute>} />
                 <Route path="/admin/revendedores"  element={<AdminOnlyRoute><AdminResellersPage /></AdminOnlyRoute>} />
                 <Route path="/admin/subadmins"     element={<AdminOnlyRoute><AdminSubAdminsPage /></AdminOnlyRoute>} />
+                <Route path="/admin/vales"         element={<AdminOnlyRoute><AdminVouchersPage /></AdminOnlyRoute>} />
 
                 {/* 404 */}
                 <Route path="*" element={<NotFoundPage />} />

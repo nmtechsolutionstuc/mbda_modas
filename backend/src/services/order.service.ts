@@ -365,14 +365,20 @@ export async function cancelOrder(orderId: string, cancelReason: string) {
   }
 
   return await prisma.$transaction(async tx => {
-    // Devolver stock si era PENDING o PROOF_RECEIVED
-    if (order.status === 'PENDING' || order.status === 'PROOF_RECEIVED') {
-      for (const item of order.items.filter(i => !i.cancelled)) {
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: { stock: { increment: item.quantity } },
-        })
-      }
+    // Devolver stock: si ya estaba CONFIRMED, la prenda no fue retirada todavía (DISPATCHED ya está bloqueado arriba)
+    for (const item of order.items.filter(i => !i.cancelled)) {
+      await tx.productVariant.update({
+        where: { id: item.variantId },
+        data: { stock: { increment: item.quantity } },
+      })
+    }
+
+    // Si ya se habían generado comisiones (pedido CONFIRMED), cancelarlas — las ya pagadas quedan intactas
+    if (order.status === 'CONFIRMED') {
+      await tx.commission.updateMany({
+        where: { orderId, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      })
     }
 
     return tx.order.update({
@@ -516,6 +522,10 @@ export async function lazyExpirePickups() {
           data: { stock: { increment: item.quantity } },
         })
       }
+      await tx.commission.updateMany({
+        where: { orderId: order.id, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      })
       await tx.order.update({
         where: { id: order.id },
         data: { status: 'CANCELLED', cancelReason: 'Vencido: no fue retirado dentro del plazo' },

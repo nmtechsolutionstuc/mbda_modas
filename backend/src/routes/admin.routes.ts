@@ -33,6 +33,10 @@ import {
 import {
   listSubAdmins, createSubAdmin, toggleSubAdmin,
 } from '../controllers/admin.subadmin.controller'
+import {
+  listVouchersHandler, createVoucherHandler, updateVoucherHandler,
+  markVoucherUsedAction, cancelVoucherAction,
+} from '../controllers/admin.voucher.controller'
 
 const router = Router()
 
@@ -90,5 +94,12 @@ router.patch('/resellers/:id/toggle', adminOnly, deactivateReseller)
 router.get('/subadmins',               adminOnly, listSubAdmins)
 router.post('/subadmins',              adminOnly, createSubAdmin)
 router.patch('/subadmins/:id/toggle',  adminOnly, toggleSubAdmin)
+
+// ── Vales de cambio (solo ADMIN) ──────────────────────────────────────────────
+router.get('/vouchers',              adminOnly, listVouchersHandler)
+router.post('/vouchers',             adminOnly, createVoucherHandler)
+router.patch('/vouchers/:id',        adminOnly, updateVoucherHandler)
+router.patch('/vouchers/:id/use',    adminOnly, markVoucherUsedAction)
+router.patch('/vouchers/:id/cancel', adminOnly, cancelVoucherAction)
 
 export default router

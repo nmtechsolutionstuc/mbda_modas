@@ -51,6 +51,13 @@ enum PaymentMethod {
 enum CommissionStatus {
   PENDING
   PAID
+  CANCELLED
+}
+
+enum VoucherStatus {
+  ACTIVE
+  USED
+  CANCELLED
 }
 
 enum AdminRole {
@@ -301,6 +308,29 @@ model Commission {
   @@index([resellerId])
   @@index([orderId])
   @@map("commissions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// VOUCHER — Vale de cambio, personal e intransferible, sin vencimiento
+// ─────────────────────────────────────────────────────────────
+
+model Voucher {
+  id                 String        @id @default(uuid())
+  buyerName          String
+  buyerWhatsapp      String
+  amount             Decimal       @db.Decimal(12, 2)
+  status             VoucherStatus @default(ACTIVE)
+  note               String?       @db.Text
+  relatedOrderNumber String?
+  createdByAdminId   String
+  createdByAdminName String
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  usedAt             DateTime?
+  cancelledAt        DateTime?
+
+  @@index([buyerWhatsapp])
+  @@map("vouchers")
 }
 
 // ─────────────────────────────────────────────────────────────

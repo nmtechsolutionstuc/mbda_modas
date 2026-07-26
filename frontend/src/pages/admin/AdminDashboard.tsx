@@ -14,6 +14,7 @@ const MENU: MenuItem[] = [
   { title: 'Pedidos', desc: 'Confirmá pagos y despachá pedidos', icon: '📦', href: '/admin/pedidos', active: true, adminOnly: true },
   { title: 'Revendedores', desc: 'Gestioná cuentas de revendedores', icon: '👥', href: '/admin/revendedores', active: true, adminOnly: true },
   { title: 'Subadmins', desc: 'Gestioná usuarios con acceso a productos', icon: '🔑', href: '/admin/subadmins', active: true, adminOnly: true },
+  { title: 'Vales', desc: 'Vales de cambio por prendas no disponibles', icon: '🎟️', href: '/admin/vales', active: true, adminOnly: true },
 ]
 
 export function AdminDashboard() {
