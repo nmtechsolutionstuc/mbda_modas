@@ -4,7 +4,7 @@ import {
   getPublicCatalog, createPublicOrder, getPublicConfig,
   type PublicProduct, type PublicConfig, type PublicVariant, type CreatedOrder, type ZipnovaQuote,
 } from '../../api/public'
-import { linkYaTransferi } from '../../utils/whatsapp'
+import { linkYaTransferi, linkWhatsApp } from '../../utils/whatsapp'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface CartItem {
@@ -33,10 +33,14 @@ function saveCart(refCode: string, items: CartItem[]) {
 }
 
 // ── ProductCard ───────────────────────────────────────────────────────────────
-function ProductCard({ product, cart, onAdd }: {
+function ProductCard({ product, resellerWhatsapp, storeName, shippingEnabled, cart, onAddToCart }: {
   product: PublicProduct
+  resellerWhatsapp: string
+  storeName: string
+  // Carrito clásico con envío a domicilio — solo se usa si el admin activó "Envíos activos"
+  shippingEnabled: boolean
   cart: CartItem[]
-  onAdd: (item: CartItem, variantStock: number) => void
+  onAddToCart: (item: CartItem, variantStock: number) => void
 }) {
   const [open, setOpen] = useState(false)
   const [selVariant, setSelVariant] = useState<PublicVariant | null>(null)
@@ -44,26 +48,30 @@ function ProductCard({ product, cart, onAdd }: {
 
   const photo = product.photos[0] ?? null
 
-  // Calcula cuántas unidades de cada variante ya están en el carrito
+  // Calcula cuántas unidades de cada variante ya están en el carrito clásico
   function inCartQty(variantId: string) {
     return cart.find(i => i.variantId === variantId)?.quantity ?? 0
   }
 
-  // Solo muestra variantes con al menos 1 unidad disponible (stock - ya en carrito)
+  // Solo muestra variantes con al menos 1 unidad disponible (descontando lo ya reservado en el carrito clásico)
   const availVariants = product.variants.filter(v => v.stock - inCartQty(v.id) > 0)
 
-  // Cuántas unidades quedan disponibles para agregar de la variante seleccionada
+  // Cuántas unidades quedan disponibles de la variante seleccionada
   const maxAddable = selVariant ? selVariant.stock - inCartQty(selVariant.id) : 0
 
-  // Resetear qty si supera el nuevo máximo al cambiar de variante
   function selectVariant(v: PublicVariant | null) {
     setSelVariant(v)
     setQty(1)
   }
 
-  function handleAdd() {
+  const whatsappLink = selVariant
+    ? linkWhatsApp(resellerWhatsapp,
+        `Hola! Vi "${product.name}" (${selVariant.size}/${selVariant.color}) x${qty} en el catálogo de ${storeName} y quiero comprarlo. ¿Está disponible?`)
+    : ''
+
+  function handleAddToCart() {
     if (!selVariant || qty < 1 || qty > maxAddable) return
-    onAdd({
+    onAddToCart({
       variantId: selVariant.id,
       productId: product.productId,
       productName: product.name,
@@ -149,8 +157,7 @@ function ProductCard({ product, cart, onAdd }: {
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
                   {product.variants.map(v => {
-                    const reserved = inCartQty(v.id)
-                    const remaining = v.stock - reserved
+                    const remaining = v.stock - inCartQty(v.id)
                     const soldOut = remaining <= 0
                     const selected = selVariant?.id === v.id
                     return (
@@ -199,31 +206,53 @@ function ProductCard({ product, cart, onAdd }: {
                   </div>
                   {/* Info stock disponible */}
                   <p style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.375rem', marginBottom: 0 }}>
-                    {inCartQty(selVariant.id) > 0
-                      ? <>Ya tenés <strong>{inCartQty(selVariant.id)}</strong> en el carrito · Podés agregar hasta <strong>{maxAddable}</strong> más</>
-                      : <>Stock disponible: <strong>{maxAddable}</strong> unidades</>
-                    }
+                    Stock disponible: <strong>{maxAddable}</strong> unidades
                   </p>
                 </div>
               )}
 
-              {/* CTA */}
-              <button
-                onClick={handleAdd}
-                disabled={!selVariant || qty < 1 || qty > maxAddable}
-                style={{
-                  width: '100%', padding: '0.875rem', borderRadius: '0.75rem', border: 'none',
-                  background: (selVariant && qty >= 1 && qty <= maxAddable) ? '#111' : '#e0dbd0',
-                  color: (selVariant && qty >= 1 && qty <= maxAddable) ? '#fff' : '#9ca3af',
-                  fontWeight: 700, fontSize: '1rem', cursor: (selVariant && qty >= 1 && qty <= maxAddable) ? 'pointer' : 'not-allowed',
-                  transition: 'opacity 0.15s',
-                }}
-              >
-                {!selVariant
-                  ? 'Seleccioná un talle y color'
-                  : `Agregar al carrito — $${(product.sellingPrice * qty).toLocaleString('es-AR')}`
-                }
-              </button>
+              {/* CTA — contactar por WhatsApp */}
+              {selVariant && qty >= 1 && qty <= maxAddable ? (
+                <a
+                  href={whatsappLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'block', textAlign: 'center', width: '100%', padding: '0.875rem', borderRadius: '0.75rem',
+                    background: '#16a34a', color: '#fff', fontWeight: 700, fontSize: '1rem', textDecoration: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  📲 Contactar por WhatsApp — ${(product.sellingPrice * qty).toLocaleString('es-AR')}
+                </a>
+              ) : (
+                <button
+                  disabled
+                  style={{
+                    width: '100%', padding: '0.875rem', borderRadius: '0.75rem', border: 'none',
+                    background: '#e0dbd0', color: '#9ca3af',
+                    fontWeight: 700, fontSize: '1rem', cursor: 'not-allowed',
+                  }}
+                >
+                  Seleccioná un talle y color
+                </button>
+              )}
+
+              {/* Alternativa: carrito clásico con envío a domicilio — solo si el admin activó "Envíos activos" */}
+              {shippingEnabled && (
+                <button
+                  onClick={handleAddToCart}
+                  disabled={!selVariant || qty < 1 || qty > maxAddable}
+                  style={{
+                    width: '100%', marginTop: '0.625rem', padding: '0.75rem', borderRadius: '0.75rem',
+                    border: '1.5px solid #e0dbd0', background: '#fff', color: '#374151',
+                    fontWeight: 600, fontSize: '0.875rem', cursor: (!selVariant || qty > maxAddable) ? 'not-allowed' : 'pointer',
+                    opacity: (!selVariant || qty > maxAddable) ? 0.5 : 1,
+                  }}
+                >
+                  🛒 Agregar al carrito (envío a domicilio)
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -918,6 +947,8 @@ export function CatalogPage() {
   const [view, setView] = useState<'catalog' | 'checkout' | 'done'>('catalog')
   const [doneData, setDoneData] = useState<{ order: CreatedOrder; waLink: string } | null>(null)
   const [cartOpen, setCartOpen] = useState(false)
+  // Carrito clásico con envío a domicilio — oculto salvo que el admin active "Envíos activos"
+  const [shippingEnabled, setShippingEnabled] = useState(false)
 
   useEffect(() => {
     if (!refCode) { setNotFound(true); setLoading(false); return }
@@ -926,6 +957,7 @@ export function CatalogPage() {
       .then(setCatalog)
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false))
+    getPublicConfig().then(c => setShippingEnabled(c.shippingEnabled)).catch(() => {/* por defecto oculto */})
   }, [refCode])
 
   function addToCart(item: CartItem, variantStock: number) {
@@ -995,7 +1027,7 @@ export function CatalogPage() {
             </div>
           </div>
 
-          {cartCount > 0 && (
+          {shippingEnabled && cartCount > 0 && (
             <button
               onClick={() => view === 'checkout' ? setView('catalog') : setCartOpen(!cartOpen)}
               style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: '2rem', padding: '0.5rem 1.25rem', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}
@@ -1041,13 +1073,23 @@ export function CatalogPage() {
             {filtered.length === 0
               ? <p style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>No se encontraron productos</p>
               : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-                  {filtered.map(p => <ProductCard key={p.productId} product={p} cart={cart} onAdd={addToCart} />)}
+                  {filtered.map(p => (
+                    <ProductCard
+                      key={p.productId}
+                      product={p}
+                      resellerWhatsapp={catalog.reseller.whatsapp}
+                      storeName={catalog.reseller.storeName}
+                      shippingEnabled={shippingEnabled}
+                      cart={cart}
+                      onAddToCart={addToCart}
+                    />
+                  ))}
                 </div>
             }
           </>
         )}
 
-        {view === 'checkout' && (
+        {view === 'checkout' && shippingEnabled && (
           <Checkout
             cart={cart}
             products={catalog?.products ?? []}
@@ -1062,8 +1104,8 @@ export function CatalogPage() {
         )}
       </div>
 
-      {/* Drawer del carrito */}
-      {cartOpen && view === 'catalog' && (
+      {/* Drawer del carrito clásico (envío a domicilio) */}
+      {shippingEnabled && cartOpen && view === 'catalog' && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 900 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} onClick={() => setCartOpen(false)} />
           <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '360px', maxWidth: '100vw', background: '#fff', display: 'flex', flexDirection: 'column' }}>

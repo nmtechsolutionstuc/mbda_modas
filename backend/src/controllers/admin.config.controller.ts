@@ -22,6 +22,8 @@ const UpdateConfigSchema = z.object({
   // Operational
   dispatchDays:         z.coerce.number().int().min(1).max(30).optional(),
   stockReserveHours:    z.coerce.number().int().min(1).max(168).optional(),
+  maxCashDeliveryDays:  z.coerce.number().int().min(1).max(30).optional(),
+  shippingEnabled:      z.boolean().optional(),
   defaultWeightGrams:   z.coerce.number().int().positive().optional().nullable(),
   defaultCommissionPct: z.coerce.number().min(1).max(100).optional().nullable(),
   zipnovaDiscountPctHome:   z.coerce.number().min(0).max(50).optional(),

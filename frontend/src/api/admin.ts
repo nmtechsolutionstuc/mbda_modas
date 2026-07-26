@@ -73,6 +73,8 @@ export interface Config {
   whatsapp: string
   dispatchDays: number
   stockReserveHours: number
+  maxCashDeliveryDays: number
+  shippingEnabled: boolean
   defaultWeightGrams: number | null
   defaultCommissionPct: string | null
   zipnovaDiscountPctHome: string

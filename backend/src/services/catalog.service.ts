@@ -27,6 +27,7 @@ export async function getResellerCatalog(resellerId: string) {
     return {
       id: item.id,
       sellingPrice: item.sellingPrice,
+      saleMode: item.saleMode,
       ganancia,
       createdAt: item.createdAt,
       product: {
@@ -70,7 +71,7 @@ export async function getAvailableProducts(resellerId: string, opts: {
       include: {
         category: { select: { id: true, name: true } },
         variants: { select: { id: true, size: true, color: true, stock: true } },
-        catalogItems: { where: { resellerId }, select: { id: true, sellingPrice: true } },
+        catalogItems: { where: { resellerId }, select: { id: true, sellingPrice: true, saleMode: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -81,7 +82,8 @@ export async function getAvailableProducts(resellerId: string, opts: {
 
   return {
     products: products.map(p => {
-      const catalogEntry = p.catalogItems[0] ?? null
+      const presencial = p.catalogItems.find(c => c.saleMode === 'PRESENCIAL') ?? null
+      const online = p.catalogItems.find(c => c.saleMode === 'ONLINE') ?? null
       return {
         id: p.id,
         name: p.name,
@@ -91,9 +93,9 @@ export async function getAvailableProducts(resellerId: string, opts: {
         photos: p.photos,
         category: p.category,
         variants: p.variants,
-        inCatalog: !!catalogEntry,
-        catalogItemId: catalogEntry?.id ?? null,
-        sellingPrice: catalogEntry?.sellingPrice ?? null,
+        presencialCatalogItemId: presencial?.id ?? null,
+        onlineCatalogItemId: online?.id ?? null,
+        onlineSellingPrice: online?.sellingPrice ?? null,
       }
     }),
     total,
@@ -103,27 +105,35 @@ export async function getAvailableProducts(resellerId: string, opts: {
 }
 
 /** Agrega un producto al catálogo del revendedor */
-export async function addProductToCatalog(resellerId: string, productId: string, sellingPrice: number) {
+export async function addProductToCatalog(
+  resellerId: string,
+  productId: string,
+  sellingPrice: number,
+  saleMode: 'PRESENCIAL' | 'ONLINE',
+) {
   const product = await prisma.product.findFirst({
     where: { id: productId, isActive: true },
   })
   if (!product) throw Object.assign(new Error('Producto no encontrado o inactivo'), { status: 404 })
 
-  if (sellingPrice < Number(product.basePrice)) {
+  // En modo presencial el precio es siempre el precio fijo del local — no lo define el revendedor
+  const finalPrice = saleMode === 'PRESENCIAL' ? Number(product.basePrice) : sellingPrice
+
+  if (finalPrice < Number(product.basePrice)) {
     throw Object.assign(
       new Error('El precio de venta no puede ser menor al precio base'),
       { status: 400 },
     )
   }
 
-  // Verificar si ya está en el catálogo
+  // Verificar si ya está en el catálogo en ese modo
   const existing = await prisma.catalogItem.findUnique({
-    where: { resellerId_productId: { resellerId, productId } },
+    where: { resellerId_productId_saleMode: { resellerId, productId, saleMode } },
   })
-  if (existing) throw Object.assign(new Error('El producto ya está en tu catálogo'), { status: 409 })
+  if (existing) throw Object.assign(new Error('El producto ya está en tu catálogo en ese modo'), { status: 409 })
 
   const item = await prisma.catalogItem.create({
-    data: { resellerId, productId, sellingPrice },
+    data: { resellerId, productId, sellingPrice: finalPrice, saleMode },
     include: {
       product: {
         include: {
@@ -134,17 +144,24 @@ export async function addProductToCatalog(resellerId: string, productId: string,
     },
   })
 
-  const ganancia = calcularComision(sellingPrice, Number(product.basePrice), Number(product.commissionPct))
+  const ganancia = calcularComision(finalPrice, Number(product.basePrice), Number(product.commissionPct))
   return { ...item, ganancia }
 }
 
-/** Actualiza el precio de venta de un ítem del catálogo */
+/** Actualiza el precio de venta de un ítem del catálogo (solo disponible en modo online) */
 export async function updateCatalogItemPrice(resellerId: string, itemId: string, sellingPrice: number) {
   const item = await prisma.catalogItem.findFirst({
     where: { id: itemId, resellerId },
     include: { product: true },
   })
   if (!item) throw Object.assign(new Error('Ítem no encontrado'), { status: 404 })
+
+  if (item.saleMode === 'PRESENCIAL') {
+    throw Object.assign(
+      new Error('En modo presencial el precio es el precio fijo del local y no se puede modificar'),
+      { status: 400 },
+    )
+  }
 
   if (sellingPrice < Number(item.product.basePrice)) {
     throw Object.assign(

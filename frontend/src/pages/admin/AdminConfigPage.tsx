@@ -230,9 +230,11 @@ export function AdminConfigPage() {
   // Operational fields
   const [dispatchDays, setDispatchDays] = useState(3)
   const [stockReserveHours, setStockReserveHours] = useState(24)
+  const [maxCashDeliveryDays, setMaxCashDeliveryDays] = useState(2)
   const [defaultCommissionPct, setDefaultCommissionPct] = useState('')
   const [zipnovaDiscountPctHome, setZipnovaDiscountPctHome] = useState('')
   const [zipnovaDiscountPctBranch, setZipnovaDiscountPctBranch] = useState('')
+  const [shippingEnabled, setShippingEnabled] = useState(false)
 
   // Terms
   const [termsContent, setTermsContent] = useState('')
@@ -250,9 +252,11 @@ export function AdminConfigPage() {
         setWhatsapp(c.whatsapp)
         setDispatchDays(c.dispatchDays)
         setStockReserveHours(c.stockReserveHours)
+        setMaxCashDeliveryDays(c.maxCashDeliveryDays)
         setDefaultCommissionPct(String(c.defaultCommissionPct ?? ''))
         setZipnovaDiscountPctHome(String(c.zipnovaDiscountPctHome ?? '0'))
         setZipnovaDiscountPctBranch(String(c.zipnovaDiscountPctBranch ?? '0'))
+        setShippingEnabled(c.shippingEnabled)
         setTermsContent(c.termsContent ?? '')
       })
       .catch(() => showToast('Error al cargar configuración', 'error'))
@@ -366,7 +370,7 @@ export function AdminConfigPage() {
         {/* ── Pedidos y stock ──────────────────────────────────────────────── */}
         <Section title="📦 Pedidos y stock">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={LABEL}>Días de despacho</label>
                 <input value={dispatchDays} onChange={e => setDispatchDays(Number(e.target.value))} type="number" min="1" max="30" style={INP} />
@@ -379,9 +383,14 @@ export function AdminConfigPage() {
                 <label style={LABEL}>Comisión por defecto (%)</label>
                 <input value={defaultCommissionPct} onChange={e => setDefaultCommissionPct(e.target.value)} type="number" min="1" max="100" style={INP} placeholder="20" />
               </div>
+              <div>
+                <label style={LABEL}>Tope pago en efectivo (días)</label>
+                <input value={maxCashDeliveryDays} onChange={e => setMaxCashDeliveryDays(Number(e.target.value))} type="number" min="1" max="30" style={INP} />
+              </div>
             </div>
             <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
               Pedidos PENDING sin confirmación en {stockReserveHours}h son cancelados automáticamente y el stock se libera.
+              Cuando un revendedor marca una venta como pagada en efectivo, la fecha de entrega no puede superar los {maxCashDeliveryDays} días.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
@@ -390,6 +399,7 @@ export function AdminConfigPage() {
                   dispatchDays,
                   stockReserveHours,
                   defaultCommissionPct: defaultCommissionPct ? Number(defaultCommissionPct) : null,
+                  maxCashDeliveryDays,
                 })}
                 style={{ ...BTN_PRIMARY, opacity: saving === 'orders' ? 0.6 : 1 }}
               >
@@ -400,9 +410,16 @@ export function AdminConfigPage() {
         </Section>
 
         {/* ── Cotización de envíos ─────────────────────────────────────────── */}
-        <Section title="🚚 Cotización de envíos">
+        <Section title="🚚 Envíos">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={shippingEnabled} onChange={e => setShippingEnabled(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+              <span style={{ fontWeight: 600, color: '#111', fontSize: '0.9rem' }}>Envíos activos</span>
+            </label>
+            <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '-0.5rem' }}>
+              Por defecto la venta se maneja por reserva y retiro en el local. Activá esto solo si querés ofrecer también envío a domicilio con cotización Zipnova.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', opacity: shippingEnabled ? 1 : 0.5 }}>
               <div>
                 <label style={LABEL}>Descuento envío a domicilio (%)</label>
                 <input
@@ -432,6 +449,7 @@ export function AdminConfigPage() {
               <button
                 disabled={saving === 'shipping'}
                 onClick={() => doSave('shipping', {
+                  shippingEnabled,
                   zipnovaDiscountPctHome:   zipnovaDiscountPctHome   ? Number(zipnovaDiscountPctHome)   : 0,
                   zipnovaDiscountPctBranch: zipnovaDiscountPctBranch ? Number(zipnovaDiscountPctBranch) : 0,
                 })}

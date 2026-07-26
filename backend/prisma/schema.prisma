@@ -33,6 +33,21 @@ enum ShippingMethod {
   OTHER_CARRIER
 }
 
+enum SaleMode {
+  PRESENCIAL
+  ONLINE
+}
+
+enum PickupBy {
+  BUYER
+  RESELLER
+}
+
+enum PaymentMethod {
+  TRANSFER
+  CASH
+}
+
 enum CommissionStatus {
   PENDING
   PAID
@@ -187,10 +202,11 @@ model CatalogItem {
   productId    String
   product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   sellingPrice Decimal  @db.Decimal(12, 2)
+  saleMode     SaleMode @default(ONLINE)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@unique([resellerId, productId])
+  @@unique([resellerId, productId, saleMode])
   @@index([resellerId])
   @@index([productId])
   @@map("catalog_items")
@@ -219,6 +235,9 @@ model Order {
   buyerNote         String?        @db.Text  // Nota libre del comprador (referencia, aclaraciones, etc.)
   trackingNumber    String?
   shippingLabel     String?
+  pickupBy          PickupBy       @default(BUYER)   // quién retira en el local: el comprador o el revendedor
+  paymentMethod     PaymentMethod?                    // cómo pagó el comprador (flujo de reserva del revendedor)
+  cashDueDate       DateTime?                         // fecha tope de entrega/cobro cuando paymentMethod=CASH
   subtotal         Decimal        @db.Decimal(12, 2)
   total            Decimal        @db.Decimal(12, 2)
   status           OrderStatus    @default(PENDING)
@@ -312,6 +331,8 @@ model Config {
   whatsapp             String    @default("")
   dispatchDays         Int       @default(3)
   stockReserveHours    Int       @default(24)
+  maxCashDeliveryDays  Int       @default(2)
+  shippingEnabled      Boolean   @default(false)
   defaultWeightGrams   Int?
   defaultDimH          Decimal?  @db.Decimal(6, 2)
   defaultDimW          Decimal?  @db.Decimal(6, 2)

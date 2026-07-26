@@ -105,9 +105,9 @@ export async function createPublicOrder(input: CreateOrderInput) {
         )
       }
 
-      // Obtener precio del catálogo del revendedor
-      const catalogItem = await tx.catalogItem.findUnique({
-        where: { resellerId_productId: { resellerId: reseller.id, productId: variant.productId } },
+      // Obtener precio del catálogo del revendedor (checkout clásico, no distingue modo de venta)
+      const catalogItem = await tx.catalogItem.findFirst({
+        where: { resellerId: reseller.id, productId: variant.productId },
       })
       if (!catalogItem) {
         throw Object.assign(new Error(`${variant.product.name} no está en el catálogo de este revendedor`), { status: 404 })
@@ -212,7 +212,10 @@ export async function getOrder(orderId: string) {
   return order
 }
 
-export async function confirmOrder(orderId: string) {
+export async function confirmOrder(
+  orderId: string,
+  opts?: { paymentMethod?: 'TRANSFER' | 'CASH'; cashDueDate?: Date },
+) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: true, reseller: true },
@@ -223,7 +226,14 @@ export async function confirmOrder(orderId: string) {
   }
 
   return await prisma.$transaction(async tx => {
-    await tx.order.update({ where: { id: orderId }, data: { status: 'CONFIRMED' } })
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'CONFIRMED',
+        ...(opts?.paymentMethod && { paymentMethod: opts.paymentMethod }),
+        ...(opts?.cashDueDate && { cashDueDate: opts.cashDueDate }),
+      },
+    })
 
     // Crear comisiones por cada ítem
     const commissionsData = order.items
@@ -367,4 +377,120 @@ export async function cancelOrder(orderId: string, cancelReason: string) {
       include: { reseller: true, items: true },
     })
   })
+}
+
+// ── Reserva iniciada por el revendedor (WhatsApp + reservar + marcar vendido) ──
+
+export interface CreateReservationInput {
+  catalogItemId: string
+  variantId:     string
+  quantity:      number
+  buyerName:     string
+  buyerWhatsapp: string
+}
+
+/** El revendedor reserva un producto de su catálogo para un comprador con el que ya negoció por WhatsApp */
+export async function createReservation(resellerId: string, input: CreateReservationInput) {
+  await lazyExpireOrders()
+
+  const catalogItem = await prisma.catalogItem.findFirst({
+    where: { id: input.catalogItemId, resellerId },
+    include: { product: true },
+  })
+  if (!catalogItem) throw Object.assign(new Error('Producto no encontrado en tu catálogo'), { status: 404 })
+
+  const variant = await prisma.productVariant.findFirst({
+    where: { id: input.variantId, productId: catalogItem.productId },
+  })
+  if (!variant) throw Object.assign(new Error('Variante no encontrada'), { status: 404 })
+  if (variant.stock < input.quantity) {
+    throw Object.assign(new Error(`Stock insuficiente (quedan ${variant.stock})`), { status: 409 })
+  }
+
+  const config = await prisma.config.findFirst()
+  if (!config) throw Object.assign(new Error('Configuración no encontrada'), { status: 500 })
+
+  let orderNumber = generateOrderNumber()
+  let attempts = 0
+  while (await prisma.order.findUnique({ where: { orderNumber } }) && attempts < 20) {
+    orderNumber = generateOrderNumber()
+    attempts++
+  }
+
+  const reservedUntil = new Date(Date.now() + config.stockReserveHours * 60 * 60 * 1000)
+  const unitPrice = Number(catalogItem.sellingPrice)
+  const subtotal = unitPrice * input.quantity
+  const pickupBy = catalogItem.saleMode === 'PRESENCIAL' ? 'BUYER' : 'RESELLER'
+
+  return prisma.$transaction(async tx => {
+    await tx.productVariant.update({
+      where: { id: input.variantId },
+      data: { stock: { decrement: input.quantity } },
+    })
+
+    const order = await tx.order.create({
+      data: {
+        orderNumber,
+        resellerId,
+        buyerName:     input.buyerName,
+        buyerWhatsapp: input.buyerWhatsapp,
+        shippingMethod: 'LOCAL_PICKUP',
+        pickupBy,
+        subtotal,
+        total: subtotal,
+        status: 'PENDING',
+        reservedUntil,
+        items: {
+          create: [{
+            variantId:     input.variantId,
+            productId:     variant.productId,
+            productName:   catalogItem.product.name,
+            size:          variant.size,
+            color:         variant.color,
+            quantity:      input.quantity,
+            unitPrice,
+            basePrice:     Number(catalogItem.product.basePrice),
+            commissionPct: Number(catalogItem.product.commissionPct),
+            subtotal,
+          }],
+        },
+      },
+      include: { items: true },
+    })
+
+    return { order, config }
+  })
+}
+
+/** El revendedor confirma que cobró y marca la reserva como vendida (genera la comisión) */
+export async function resellerMarkSold(
+  resellerId: string,
+  orderId: string,
+  opts: { paymentMethod: 'TRANSFER' | 'CASH'; cashDueDate?: Date },
+) {
+  const order = await prisma.order.findFirst({ where: { id: orderId, resellerId } })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+
+  if (opts.paymentMethod === 'CASH') {
+    const config = await prisma.config.findFirst()
+    const maxDate = new Date(Date.now() + (config?.maxCashDeliveryDays ?? 2) * 24 * 60 * 60 * 1000)
+    if (!opts.cashDueDate || opts.cashDueDate > maxDate) {
+      throw Object.assign(
+        new Error(`La fecha de entrega no puede superar los ${config?.maxCashDeliveryDays ?? 2} días configurados por el admin`),
+        { status: 400 },
+      )
+    }
+  }
+
+  return confirmOrder(orderId, opts)
+}
+
+/** El revendedor cancela su propia reserva mientras esté pendiente de pago */
+export async function resellerCancelReservation(resellerId: string, orderId: string) {
+  const order = await prisma.order.findFirst({ where: { id: orderId, resellerId } })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status !== 'PENDING') {
+    throw Object.assign(new Error('Solo podés cancelar reservas pendientes de pago'), { status: 400 })
+  }
+  return cancelOrder(orderId, 'Cancelado por el revendedor')
 }

@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import axiosClient from '../../api/axiosClient'
 import { useToast } from '../../context/ToastContext'
+import { markOrderSold, cancelMyOrder } from '../../api/reseller'
+import { getPublicConfig } from '../../api/public'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,9 @@ interface Sale {
   shippingMethod: string
   shippingCity: string | null
   shippingProvince: string | null
+  pickupBy: 'BUYER' | 'RESELLER'
+  paymentMethod: 'TRANSFER' | 'CASH' | null
+  cashDueDate: string | null
   subtotal: string
   total: string
   status: OrderStatus
@@ -67,6 +72,11 @@ const SHIPPING_LABEL: Record<string, string> = {
   LOCAL_PICKUP: 'Retiro en persona',
 }
 
+const PICKUP_LABEL: Record<'BUYER' | 'RESELLER', string> = {
+  BUYER: 'Retira el comprador en el local',
+  RESELLER: 'Retirás vos con comprobante y le entregás al comprador',
+}
+
 function fmt(val: string | number) {
   return `$${Number(val).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
 }
@@ -84,11 +94,145 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   )
 }
 
+// ── Modal: marcar como vendido ────────────────────────────────────────────────
+
+function MarkSoldModal({ sale, onClose, onDone }: {
+  sale: Sale
+  onClose: () => void
+  onDone: () => void
+}) {
+  const { showToast } = useToast()
+  const [method, setMethod] = useState<'TRANSFER' | 'CASH' | null>(null)
+  const [confirmedProof, setConfirmedProof] = useState(false)
+  const [cashDate, setCashDate] = useState('')
+  const [maxCashDays, setMaxCashDays] = useState(2)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    getPublicConfig().then(c => setMaxCashDays(c.maxCashDeliveryDays)).catch(() => {/* usa default */})
+  }, [])
+
+  const today = new Date()
+  const maxDate = new Date(today.getTime() + maxCashDays * 86400000)
+  const maxDateStr = maxDate.toISOString().slice(0, 10)
+
+  async function confirm() {
+    if (!method) return
+    if (method === 'TRANSFER' && !confirmedProof) return
+    if (method === 'CASH' && !cashDate) return
+    setSubmitting(true)
+    try {
+      await markOrderSold(sale.id, {
+        paymentMethod: method,
+        ...(method === 'CASH' && { cashDueDate: new Date(cashDate).toISOString() }),
+      })
+      showToast('Venta confirmada — ya se generó tu comisión', 'success')
+      onDone()
+      onClose()
+    } catch (e: any) {
+      showToast(e?.response?.data?.message ?? 'Error al marcar como vendido', 'error')
+    }
+    setSubmitting(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: '1rem', width: '100%', maxWidth: '480px', padding: '1.5rem' }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.2rem', fontWeight: 700, color: '#111', marginBottom: '1rem' }}>
+          ¿Cómo te pagó {sale.buyerName}?
+        </h2>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem', marginBottom: '1.25rem' }}>
+          <button onClick={() => setMethod('TRANSFER')} style={{
+            padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
+            border: `2px solid ${method === 'TRANSFER' ? '#111' : '#e0dbd0'}`,
+            background: method === 'TRANSFER' ? '#111' : '#fff',
+            color: method === 'TRANSFER' ? '#fff' : '#374151',
+          }}>💸 Transferencia</button>
+          <button onClick={() => setMethod('CASH')} style={{
+            padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
+            border: `2px solid ${method === 'CASH' ? '#111' : '#e0dbd0'}`,
+            background: method === 'CASH' ? '#111' : '#fff',
+            color: method === 'CASH' ? '#fff' : '#374151',
+          }}>💵 Efectivo</button>
+        </div>
+
+        {method === 'TRANSFER' && (
+          <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '0.75rem', padding: '1rem', marginBottom: '1.25rem' }}>
+            <p style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+              ⚠️ Pedile el comprobante de la transferencia a tu comprador y confirmá que el dinero YA está acreditado en la cuenta antes de continuar.
+            </p>
+            <p style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+              No le entregues la prenda hasta ver el pago acreditado.
+            </p>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: '#111', cursor: 'pointer' }}>
+              <input type="checkbox" checked={confirmedProof} onChange={e => setConfirmedProof(e.target.checked)} style={{ marginTop: '0.2rem' }} />
+              Confirmo que vi el comprobante y el pago está acreditado en la cuenta de MBDA.
+            </label>
+          </div>
+        )}
+
+        {method === 'CASH' && (
+          <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '0.75rem', padding: '1rem', marginBottom: '1.25rem' }}>
+            <p style={{ fontSize: '0.875rem', color: '#92400e', marginBottom: '0.75rem' }}>
+              Monto a cobrar: <strong>${Number(sale.total).toLocaleString('es-AR')}</strong>
+            </p>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#1e1914', marginBottom: '0.375rem' }}>
+              Fecha de entrega (máximo {maxCashDays} día{maxCashDays !== 1 ? 's' : ''})
+            </label>
+            <input
+              type="date"
+              value={cashDate}
+              min={today.toISOString().slice(0, 10)}
+              max={maxDateStr}
+              onChange={e => setCashDate(e.target.value)}
+              style={{ padding: '0.55rem 0.75rem', borderRadius: '0.5rem', border: '1.5px solid #e0dbd0', width: '100%' }}
+            />
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '0.625rem' }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '0.7rem', borderRadius: '0.625rem', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+            Cancelar
+          </button>
+          <button
+            onClick={confirm}
+            disabled={submitting || !method || (method === 'TRANSFER' && !confirmedProof) || (method === 'CASH' && !cashDate)}
+            style={{
+              flex: 2, padding: '0.7rem', borderRadius: '0.625rem', border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer',
+              opacity: (submitting || !method || (method === 'TRANSFER' && !confirmedProof) || (method === 'CASH' && !cashDate)) ? 0.5 : 1,
+            }}
+          >
+            {submitting ? 'Confirmando...' : '✓ Confirmar venta'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Modal detalle de venta ────────────────────────────────────────────────────
 
-function SaleModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
+function SaleModal({ sale, onClose, onChanged }: { sale: Sale; onClose: () => void; onChanged: () => void }) {
+  const { showToast } = useToast()
   const remainingMs = new Date(sale.reservedUntil).getTime() - Date.now()
   const hoursLeft = Math.max(0, Math.floor(remainingMs / 3600000))
+  const [markingSold, setMarkingSold] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+
+  async function doCancel() {
+    if (!confirm('¿Cancelar esta reserva? El stock vuelve a estar disponible.')) return
+    setCancelling(true)
+    try {
+      await cancelMyOrder(sale.id)
+      showToast('Reserva cancelada', 'success')
+      onChanged()
+      onClose()
+    } catch (e: any) {
+      showToast(e?.response?.data?.message ?? 'Error al cancelar', 'error')
+    }
+    setCancelling(false)
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
@@ -139,6 +283,40 @@ function SaleModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
             </div>
           )}
 
+          {/* Retiro y pago */}
+          {(sale.status === 'CONFIRMED' || sale.status === 'DISPATCHED') && (
+            <div style={{ background: '#f5f3ef', borderRadius: '0.75rem', padding: '0.875rem', fontSize: '0.875rem', color: '#374151' }}>
+              <p>🏷️ {PICKUP_LABEL[sale.pickupBy]}</p>
+              {sale.paymentMethod === 'CASH' && sale.cashDueDate && (
+                <p style={{ marginTop: '0.375rem' }}>
+                  💵 Paga en efectivo — entrega hasta el <strong>{new Date(sale.cashDueDate).toLocaleDateString('es-AR')}</strong>
+                </p>
+              )}
+              {sale.paymentMethod === 'TRANSFER' && (
+                <p style={{ marginTop: '0.375rem' }}>💸 Pagado por transferencia</p>
+              )}
+            </div>
+          )}
+
+          {/* Acciones */}
+          {sale.status === 'PENDING' && (
+            <div style={{ display: 'flex', gap: '0.625rem' }}>
+              <button
+                onClick={doCancel}
+                disabled={cancelling}
+                style={{ flex: 1, padding: '0.7rem', borderRadius: '0.625rem', border: '1.5px solid #fde8e8', background: '#fff5f5', color: '#dc2626', fontWeight: 600, cursor: 'pointer' }}
+              >
+                {cancelling ? 'Cancelando...' : 'Cancelar reserva'}
+              </button>
+              <button
+                onClick={() => setMarkingSold(true)}
+                style={{ flex: 2, padding: '0.7rem', borderRadius: '0.625rem', border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                ✓ Marcar como vendido
+              </button>
+            </div>
+          )}
+
           {/* Tracking */}
           {sale.trackingNumber && (
             <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.75rem', padding: '0.875rem', fontSize: '0.875rem', color: '#166534' }}>
@@ -154,6 +332,14 @@ function SaleModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
           )}
         </div>
       </div>
+
+      {markingSold && (
+        <MarkSoldModal
+          sale={sale}
+          onClose={() => setMarkingSold(false)}
+          onDone={() => { onChanged(); onClose() }}
+        />
+      )}
     </div>
   )
 }
@@ -288,7 +474,7 @@ export function MySalesPage() {
         )}
       </div>
 
-      {selected && <SaleModal sale={selected} onClose={() => setSelected(null)} />}
+      {selected && <SaleModal sale={selected} onClose={() => setSelected(null)} onChanged={load} />}
     </div>
   )
 }

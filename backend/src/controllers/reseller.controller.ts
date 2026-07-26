@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import { z } from 'zod'
-import { ok, created, notFound, conflict, badRequest } from '../utils/apiResponse'
+import { ok, created, badRequest } from '../utils/apiResponse'
 import { asyncHandler } from '../utils/asyncHandler'
 import { prisma } from '../config/prisma'
 import {
@@ -10,6 +10,11 @@ import {
   updateCatalogItemPrice,
   removeFromCatalog,
 } from '../services/catalog.service'
+import {
+  createReservation,
+  resellerMarkSold,
+  resellerCancelReservation,
+} from '../services/order.service'
 import { persistPhotos, deletePhoto } from '../services/upload.service'
 
 // ── Categorías accesibles por revendedor ────────────────────────────────────
@@ -49,9 +54,10 @@ export const addToCatalog = asyncHandler(async (req: Request, res: Response) => 
   const schema = z.object({
     productId:    z.string().uuid(),
     sellingPrice: z.number().positive(),
+    saleMode:     z.enum(['PRESENCIAL', 'ONLINE']).default('ONLINE'),
   })
-  const { productId, sellingPrice } = schema.parse(req.body)
-  const item = await addProductToCatalog(resellerId, productId, sellingPrice)
+  const { productId, sellingPrice, saleMode } = schema.parse(req.body)
+  const item = await addProductToCatalog(resellerId, productId, sellingPrice, saleMode)
   created(res, item)
 })
 
@@ -98,6 +104,48 @@ export const getMyOrders = asyncHandler(async (req: Request, res: Response) => {
     prisma.order.count({ where }),
   ])
   ok(res, { orders, total, page, totalPages: Math.ceil(total / limit) })
+})
+
+/** El revendedor reserva un producto de su catálogo para un comprador con el que negoció por WhatsApp */
+export const createMyReservation = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const schema = z.object({
+    catalogItemId: z.string().uuid(),
+    variantId:     z.string().uuid(),
+    quantity:      z.number().int().min(1).max(99),
+    buyerName:     z.string().min(2).max(80),
+    buyerWhatsapp: z.string().regex(/^\d{10,15}$/, 'Formato inválido de WhatsApp'),
+  })
+  const data = schema.parse(req.body)
+  const { order, config } = await createReservation(resellerId, data)
+  created(res, {
+    order,
+    payment: { cbu: config.cbu, alias: config.alias },
+  })
+})
+
+/** El revendedor confirma que cobró y marca la reserva como vendida */
+export const markMyOrderSold = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const { id } = req.params
+  const schema = z.object({
+    paymentMethod: z.enum(['TRANSFER', 'CASH']),
+    cashDueDate:   z.coerce.date().optional(),
+  })
+  const { paymentMethod, cashDueDate } = schema.parse(req.body)
+  if (paymentMethod === 'CASH' && !cashDueDate) {
+    return badRequest(res, 'Indicá la fecha de entrega para el pago en efectivo')
+  }
+  const order = await resellerMarkSold(resellerId, id, { paymentMethod, cashDueDate })
+  ok(res, order)
+})
+
+/** El revendedor cancela su propia reserva mientras esté pendiente de pago */
+export const cancelMyOrder = asyncHandler(async (req: Request, res: Response) => {
+  const resellerId = req.user!.sub
+  const { id } = req.params
+  const order = await resellerCancelReservation(resellerId, id)
+  ok(res, order)
 })
 
 // ── Comisiones del revendedor ────────────────────────────────────────────────

@@ -12,6 +12,9 @@ import {
   updateProfile,
   getMyOrders,
   getMyCommissions,
+  createMyReservation,
+  markMyOrderSold,
+  cancelMyOrder,
 } from '../controllers/reseller.controller'
 
 const router = Router()
@@ -31,7 +34,10 @@ router.delete('/catalog/:id', removeCatalogItem)
 router.patch('/profile', upload.single('storePhoto'), updateProfile)
 
 // Pedidos y comisiones
-router.get('/orders',      getMyOrders)
+router.get('/orders',              getMyOrders)
+router.post('/orders',             createMyReservation)
+router.patch('/orders/:id/sold',   markMyOrderSold)
+router.patch('/orders/:id/cancel', cancelMyOrder)
 router.get('/commissions', getMyCommissions)
 
 export default router

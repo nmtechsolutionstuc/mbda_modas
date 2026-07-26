@@ -21,18 +21,48 @@ export interface CatalogProduct {
   variants: CatalogProductVariant[]
 }
 
+export type SaleMode = 'PRESENCIAL' | 'ONLINE'
+
 export interface CatalogItem {
   id: string
   sellingPrice: string
+  saleMode: SaleMode
   ganancia: number
   createdAt: string
   product: CatalogProduct
 }
 
 export interface AvailableProduct extends CatalogProduct {
-  inCatalog: boolean
-  catalogItemId: string | null
-  sellingPrice: string | null
+  presencialCatalogItemId: string | null
+  onlineCatalogItemId: string | null
+  onlineSellingPrice: string | null
+}
+
+export interface ReservationOrderItem {
+  id: string
+  productName: string
+  size: string
+  color: string
+  quantity: number
+  unitPrice: string
+  subtotal: string
+}
+
+export interface ReservationOrder {
+  id: string
+  orderNumber: string
+  buyerName: string
+  buyerWhatsapp: string
+  total: string
+  status: string
+  pickupBy: 'BUYER' | 'RESELLER'
+  reservedUntil: string
+  items: ReservationOrderItem[]
+}
+
+export interface ReservationResult {
+  order: ReservationOrder
+  payment: { cbu: string; alias: string }
 }
 
 export interface AvailableProductsResponse {
@@ -89,9 +119,9 @@ export function getAvailableProducts(params?: {
     .then(r => r.data.data)
 }
 
-export function addToCatalog(productId: string, sellingPrice: number): Promise<CatalogItem> {
+export function addToCatalog(productId: string, sellingPrice: number, saleMode: SaleMode): Promise<CatalogItem> {
   return axiosClient
-    .post<ApiResponse<CatalogItem>>('/reseller/catalog', { productId, sellingPrice })
+    .post<ApiResponse<CatalogItem>>('/reseller/catalog', { productId, sellingPrice, saleMode })
     .then(r => r.data.data)
 }
 
@@ -105,6 +135,35 @@ export function removeCatalogItem(itemId: string): Promise<void> {
   return axiosClient
     .delete<ApiResponse<void>>(`/reseller/catalog/${itemId}`)
     .then(() => undefined)
+}
+
+// ── Reservas (venta iniciada por el revendedor) ───────────────────────────────
+
+export function createReservation(data: {
+  catalogItemId: string
+  variantId: string
+  quantity: number
+  buyerName: string
+  buyerWhatsapp: string
+}): Promise<ReservationResult> {
+  return axiosClient
+    .post<ApiResponse<ReservationResult>>('/reseller/orders', data)
+    .then(r => r.data.data)
+}
+
+export function markOrderSold(orderId: string, data: {
+  paymentMethod: 'TRANSFER' | 'CASH'
+  cashDueDate?: string
+}): Promise<ReservationOrder> {
+  return axiosClient
+    .patch<ApiResponse<ReservationOrder>>(`/reseller/orders/${orderId}/sold`, data)
+    .then(r => r.data.data)
+}
+
+export function cancelMyOrder(orderId: string): Promise<ReservationOrder> {
+  return axiosClient
+    .patch<ApiResponse<ReservationOrder>>(`/reseller/orders/${orderId}/cancel`, {})
+    .then(r => r.data.data)
 }
 
 // ── Perfil ───────────────────────────────────────────────────────────────────

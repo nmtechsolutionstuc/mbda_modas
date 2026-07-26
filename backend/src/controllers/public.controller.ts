@@ -67,8 +67,8 @@ export const getPublicProduct = asyncHandler(async (req: Request, res: Response)
   })
   if (!reseller) return notFound(res, 'Catálogo no encontrado')
 
-  const catalogItem = await prisma.catalogItem.findUnique({
-    where: { resellerId_productId: { resellerId: reseller.id, productId } },
+  const catalogItem = await prisma.catalogItem.findFirst({
+    where: { resellerId: reseller.id, productId },
     include: {
       product: {
         include: {
@@ -155,6 +155,7 @@ export const getPublicConfig = asyncHandler(async (_req: Request, res: Response)
   const config = await prisma.config.findFirst({
     select: {
       cbu: true, alias: true, whatsapp: true, dispatchDays: true,
+      maxCashDeliveryDays: true, shippingEnabled: true,
       // Defaults para cálculo de envío cuando el producto no tiene medidas propias
       defaultWeightGrams: true,
       defaultDimH: true, defaultDimW: true, defaultDimL: true,
