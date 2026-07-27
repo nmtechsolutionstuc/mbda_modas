@@ -430,6 +430,10 @@ export async function rejectListing(id: string): Promise<AdminListing> {
   return data.data
 }
 
+export async function deleteListing(id: string): Promise<void> {
+  await axiosClient.delete(`/admin/listings/${id}`)
+}
+
 // ── Comisiones ────────────────────────────────────────────────────────────────
 
 export interface Commission {
@@ -506,4 +510,31 @@ export async function getAdminResellers(params?: {
 export async function toggleResellerActive(id: string): Promise<AdminReseller> {
   const { data } = await axiosClient.patch<{ success: true; data: AdminReseller }>(`/admin/resellers/${id}/toggle`)
   return data.data
+}
+
+export async function createReseller(payload: {
+  firstName: string
+  lastName: string
+  email: string
+  password: string
+  whatsapp: string
+  storeName: string
+}): Promise<AdminReseller> {
+  const { data } = await axiosClient.post<{ success: true; data: AdminReseller }>('/admin/resellers', payload)
+  return data.data
+}
+
+export async function updateReseller(id: string, payload: {
+  firstName?: string
+  lastName?: string
+  email?: string
+  whatsapp?: string
+  storeName?: string
+}): Promise<AdminReseller> {
+  const { data } = await axiosClient.patch<{ success: true; data: AdminReseller }>(`/admin/resellers/${id}`, payload)
+  return data.data
+}
+
+export async function deleteReseller(id: string): Promise<void> {
+  await axiosClient.delete(`/admin/resellers/${id}`)
 }

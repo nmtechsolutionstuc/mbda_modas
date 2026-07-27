@@ -28,7 +28,7 @@ import {
   getPendingPickupsHandler, markPickedUpAction,
 } from '../controllers/admin.order.controller'
 import {
-  listResellers, deactivateReseller,
+  listResellers, deactivateReseller, createReseller, updateReseller, deleteReseller,
 } from '../controllers/admin.reseller.controller'
 import {
   listSubAdmins, createSubAdmin, toggleSubAdmin,
@@ -38,7 +38,7 @@ import {
   markVoucherUsedAction, cancelVoucherAction,
 } from '../controllers/admin.voucher.controller'
 import {
-  listListingsHandler, approveListingAction, rejectListingAction,
+  listListingsHandler, approveListingAction, rejectListingAction, deleteListingAction,
 } from '../controllers/admin.listing.controller'
 
 const router = Router()
@@ -91,7 +91,10 @@ router.patch('/commissions/:id/mark-paid', adminOnly, markCommissionPaid)
 
 // ── Revendedores (solo ADMIN) ─────────────────────────────────────────────────
 router.get('/resellers',              adminOnly, listResellers)
+router.post('/resellers',             adminOnly, createReseller)
+router.patch('/resellers/:id',        adminOnly, updateReseller)
 router.patch('/resellers/:id/toggle', adminOnly, deactivateReseller)
+router.delete('/resellers/:id',       adminOnly, deleteReseller)
 
 // ── Subadmins (solo ADMIN) ────────────────────────────────────────────────────
 router.get('/subadmins',               adminOnly, listSubAdmins)
@@ -109,5 +112,6 @@ router.patch('/vouchers/:id/cancel', adminOnly, cancelVoucherAction)
 router.get('/listings',              adminOrSub, listListingsHandler)
 router.patch('/listings/:id/approve', adminOrSub, approveListingAction)
 router.patch('/listings/:id/reject',  adminOrSub, rejectListingAction)
+router.delete('/listings/:id',        adminOrSub, deleteListingAction)
 
 export default router

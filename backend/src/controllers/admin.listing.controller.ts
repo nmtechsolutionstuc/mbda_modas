@@ -2,7 +2,7 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 import { ok } from '../utils/apiResponse'
 import { asyncHandler } from '../utils/asyncHandler'
-import { adminListListings, approveListing, rejectListing } from '../services/listing.service'
+import { adminListListings, approveListing, rejectListing, deleteListingAdmin } from '../services/listing.service'
 
 export const listListingsHandler = asyncHandler(async (req: Request, res: Response) => {
   const schema = z.object({
@@ -23,4 +23,9 @@ export const approveListingAction = asyncHandler(async (req: Request, res: Respo
 export const rejectListingAction = asyncHandler(async (req: Request, res: Response) => {
   const listing = await rejectListing(req.params.id)
   ok(res, listing)
+})
+
+export const deleteListingAction = asyncHandler(async (req: Request, res: Response) => {
+  await deleteListingAdmin(req.params.id)
+  ok(res, { id: req.params.id })
 })

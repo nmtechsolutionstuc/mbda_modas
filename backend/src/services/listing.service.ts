@@ -91,3 +91,9 @@ export async function rejectListing(id: string) {
   if (!listing) throw Object.assign(new Error('Prenda no encontrada'), { status: 404 })
   return prisma.userListing.update({ where: { id }, data: { status: 'REJECTED' } })
 }
+
+export async function deleteListingAdmin(id: string) {
+  const listing = await prisma.userListing.findUnique({ where: { id } })
+  if (!listing) throw Object.assign(new Error('Prenda no encontrada'), { status: 404 })
+  await prisma.userListing.delete({ where: { id } })
+}
