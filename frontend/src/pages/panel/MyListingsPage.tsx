@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useToast } from '../../context/ToastContext'
 import {
   getMyListings, createListing, markListingSold, removeListing,

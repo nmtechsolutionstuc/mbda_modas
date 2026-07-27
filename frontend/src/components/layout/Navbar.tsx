@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router'
 import { useAuthStore } from '../../store/authStore'
 import { logoutApi } from '../../api/auth'
 import { getPublicConfig } from '../../api/public'

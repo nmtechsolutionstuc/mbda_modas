@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import {
   getConfig, updateConfig, getConfigAudit,
   type Config, type ConfigAuditEntry,

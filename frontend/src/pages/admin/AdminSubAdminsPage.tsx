@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import axiosClient from '../../api/axiosClient'
 import { useToast } from '../../context/ToastContext'
 

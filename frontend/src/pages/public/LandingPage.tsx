@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { getPublicLanding, getPublicFeed, type LandingContent, type PublicFeed, type FeedItem } from '../../api/public'
 import { linkWhatsApp } from '../../utils/whatsapp'
 import { useAuthStore } from '../../store/authStore'

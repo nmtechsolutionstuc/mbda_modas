@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import {
   getPublicCatalog, createPublicOrder, getPublicConfig,
   type PublicProduct, type PublicConfig, type PublicVariant, type CreatedOrder, type ZipnovaQuote,
@@ -1080,7 +1080,7 @@ export function CatalogPage() {
               : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
                   {filtered.map(p => (
                     <ProductCard
-                      key={p.productId}
+                      key={p.catalogItemId}
                       product={p}
                       resellerWhatsapp={catalog.reseller.whatsapp}
                       storeName={catalog.reseller.storeName}
