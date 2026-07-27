@@ -1,6 +1,12 @@
 import { prisma } from '../config/prisma'
 import { calcularComision } from '../utils/commission'
 
+// Nunca incluir el reseller completo (expondría passwordHash) — solo los campos
+// que consumen los controllers/frontend para mostrar datos de contacto/cobro.
+const SAFE_RESELLER_SELECT = {
+  id: true, firstName: true, lastName: true, storeName: true, whatsapp: true, cbu: true, alias: true,
+} as const
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function generateOrderNumber(): string {
@@ -218,7 +224,7 @@ export async function confirmOrder(
 ) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: true, reseller: true },
+    include: { items: true, reseller: { select: SAFE_RESELLER_SELECT } },
   })
   if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
   if (order.status !== 'PENDING' && order.status !== 'PROOF_RECEIVED') {
@@ -254,7 +260,7 @@ export async function confirmOrder(
 
     return tx.order.findUnique({
       where: { id: orderId },
-      include: { reseller: true, items: true, commissions: true },
+      include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true, commissions: true },
     })
   })
 }
@@ -269,7 +275,7 @@ export async function dispatchOrder(orderId: string, trackingNumber: string) {
   return prisma.order.update({
     where: { id: orderId },
     data: { status: 'DISPATCHED', trackingNumber },
-    include: { reseller: true, items: true },
+    include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true },
   })
 }
 
@@ -283,7 +289,7 @@ export async function markProofReceived(orderId: string) {
   return prisma.order.update({
     where: { id: orderId },
     data: { status: 'PROOF_RECEIVED' },
-    include: { reseller: true, items: true },
+    include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true },
   })
 }
 
@@ -308,7 +314,7 @@ export async function rejectPayment(orderId: string, cancelReason: string) {
     return tx.order.update({
       where: { id: orderId },
       data: { status: 'CANCELLED', cancelReason },
-      include: { reseller: true, items: true },
+      include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true },
     })
   })
 }
@@ -349,7 +355,7 @@ export async function cancelOrderItem(orderId: string, itemId: string) {
     return tx.order.update({
       where: { id: orderId },
       data: { subtotal: newSubtotal, total: newSubtotal },
-      include: { reseller: true, items: true, commissions: true },
+      include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true, commissions: true },
     })
   })
 }
@@ -384,7 +390,7 @@ export async function cancelOrder(orderId: string, cancelReason: string) {
     return tx.order.update({
       where: { id: orderId },
       data: { status: 'CANCELLED', cancelReason },
-      include: { reseller: true, items: true },
+      include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true },
     })
   })
 }
@@ -558,6 +564,6 @@ export async function markPickedUp(orderId: string) {
   return prisma.order.update({
     where: { id: orderId },
     data: { status: 'DISPATCHED' },
-    include: { reseller: true, items: true },
+    include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true },
   })
 }
