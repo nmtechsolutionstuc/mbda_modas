@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { Link } from 'react-router'
 import axiosClient from '../../api/axiosClient'
 import { useToast } from '../../context/ToastContext'
@@ -101,6 +101,59 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
   )
 }
 
+// ── Edición ───────────────────────────────────────────────────────────────────
+
+function EditForm({ subadmin, onDone }: { subadmin: SubAdmin; onDone: () => void }) {
+  const { showToast } = useToast()
+  const [name, setName] = useState(subadmin.name)
+  const [email, setEmail] = useState(subadmin.email)
+  const [password, setPassword] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const INP: React.CSSProperties = {
+    width: '100%', padding: '0.5rem 0.75rem', border: '1.5px solid #e0dbd0',
+    borderRadius: '0.5rem', fontSize: '0.875rem', background: '#fff', color: '#111',
+    boxSizing: 'border-box',
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      await axiosClient.patch(`/admin/subadmins/${subadmin.id}`, {
+        ...(name !== subadmin.name && { name }),
+        ...(email !== subadmin.email && { email }),
+        ...(password && { password }),
+      })
+      showToast('Subadmin actualizado', 'success')
+      onDone()
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error al guardar', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <tr style={{ background: '#faf9f6' }}>
+      <td colSpan={5} style={{ padding: '1rem 1.25rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Nombre" style={INP} />
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" style={INP} />
+          <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Nueva contraseña (opcional)" type="password" style={INP} />
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={save} disabled={saving} style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#111', color: '#fff', fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+          <button onClick={onDone} style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', border: '1px solid #e0dbd0', background: '#fff', fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer' }}>
+            Cancelar
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 // ── Página ────────────────────────────────────────────────────────────────────
 
 export function AdminSubAdminsPage() {
@@ -108,6 +161,8 @@ export function AdminSubAdminsPage() {
   const [subadmins, setSubadmins] = useState<SubAdmin[]>([])
   const [loading, setLoading] = useState(true)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -137,8 +192,22 @@ export function AdminSubAdminsPage() {
     }
   }
 
+  async function handleDelete(sa: SubAdmin) {
+    if (!confirm(`¿Eliminar a ${sa.name} definitivamente? Esta acción no se puede deshacer.`)) return
+    setDeletingId(sa.id)
+    try {
+      await axiosClient.delete(`/admin/subadmins/${sa.id}`)
+      showToast(`${sa.name} eliminado`, 'success')
+      load()
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error al eliminar', 'error')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto' }}>
 
         <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
@@ -185,44 +254,64 @@ export function AdminSubAdminsPage() {
               </thead>
               <tbody>
                 {subadmins.map(sa => (
-                  <tr key={sa.id} style={{ borderBottom: '1px solid #f5f3ef' }}>
-                    <td style={{ padding: '0.875rem 1.25rem', fontWeight: 600 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f5f3ef', border: '1px solid #e0dbd0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 700, color: '#b8922a', flexShrink: 0 }}>
-                          {sa.name.charAt(0).toUpperCase()}
+                  <Fragment key={sa.id}>
+                    <tr style={{ borderBottom: '1px solid #f5f3ef' }}>
+                      <td style={{ padding: '0.875rem 1.25rem', fontWeight: 600 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f5f3ef', border: '1px solid #e0dbd0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 700, color: '#b8922a', flexShrink: 0 }}>
+                            {sa.name.charAt(0).toUpperCase()}
+                          </span>
+                          {sa.name}
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.875rem 1.25rem', color: '#6b7280' }}>{sa.email}</td>
+                      <td style={{ padding: '0.875rem 1.25rem' }}>
+                        <span style={{
+                          display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 600,
+                          background: sa.isActive ? '#10b98120' : '#ef444420',
+                          color: sa.isActive ? '#10b981' : '#ef4444',
+                          border: `1px solid ${sa.isActive ? '#10b98140' : '#ef444440'}`,
+                        }}>
+                          {sa.isActive ? 'Activo' : 'Inactivo'}
                         </span>
-                        {sa.name}
-                      </div>
-                    </td>
-                    <td style={{ padding: '0.875rem 1.25rem', color: '#6b7280' }}>{sa.email}</td>
-                    <td style={{ padding: '0.875rem 1.25rem' }}>
-                      <span style={{
-                        display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 600,
-                        background: sa.isActive ? '#10b98120' : '#ef444420',
-                        color: sa.isActive ? '#10b981' : '#ef4444',
-                        border: `1px solid ${sa.isActive ? '#10b98140' : '#ef444440'}`,
-                      }}>
-                        {sa.isActive ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.875rem 1.25rem', color: '#6b7280', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
-                      {new Date(sa.createdAt).toLocaleDateString('es-AR')}
-                    </td>
-                    <td style={{ padding: '0.875rem 1.25rem' }}>
-                      <button
-                        onClick={() => handleToggle(sa)}
-                        disabled={togglingId === sa.id}
-                        style={{
-                          padding: '0.375rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
-                          border: `1px solid ${sa.isActive ? '#ef4444' : '#10b981'}`,
-                          background: 'transparent',
-                          color: sa.isActive ? '#ef4444' : '#10b981',
-                        }}
-                      >
-                        {togglingId === sa.id ? '...' : sa.isActive ? 'Desactivar' : 'Activar'}
-                      </button>
-                    </td>
-                  </tr>
+                      </td>
+                      <td style={{ padding: '0.875rem 1.25rem', color: '#6b7280', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+                        {new Date(sa.createdAt).toLocaleDateString('es-AR')}
+                      </td>
+                      <td style={{ padding: '0.875rem 1.25rem' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            onClick={() => setEditingId(editingId === sa.id ? null : sa.id)}
+                            style={{ padding: '0.375rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', border: '1px solid #e0dbd0', background: 'transparent', color: '#111' }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleToggle(sa)}
+                            disabled={togglingId === sa.id}
+                            style={{
+                              padding: '0.375rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
+                              border: `1px solid ${sa.isActive ? '#ef4444' : '#10b981'}`,
+                              background: 'transparent',
+                              color: sa.isActive ? '#ef4444' : '#10b981',
+                            }}
+                          >
+                            {togglingId === sa.id ? '...' : sa.isActive ? 'Desactivar' : 'Activar'}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(sa)}
+                            disabled={deletingId === sa.id}
+                            style={{ padding: '0.375rem 0.875rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', border: '1px solid #ef4444', background: 'transparent', color: '#ef4444' }}
+                          >
+                            {deletingId === sa.id ? '...' : 'Eliminar'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {editingId === sa.id && (
+                      <EditForm subadmin={sa} onDone={() => { setEditingId(null); load() }} />
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

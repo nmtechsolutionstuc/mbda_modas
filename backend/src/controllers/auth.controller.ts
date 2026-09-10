@@ -2,7 +2,7 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 import type { Reseller } from '@prisma/client'
 import { prisma } from '../config/prisma'
-import { verifyPassword, hashPassword, generateReferralCode, createResellerTokens, rotateRefreshToken, revokeRefreshToken } from '../services/auth.service'
+import { verifyPassword, hashPassword, generateReferralCode, generateStoreSlug, assertCityHasCapacity, createResellerTokens, rotateRefreshToken, revokeRefreshToken } from '../services/auth.service'
 import { signAccessToken, verifyRefreshToken } from '../utils/jwt'
 import { ok, created, unauthorized, forbidden, notFound, conflict } from '../utils/apiResponse'
 
@@ -70,12 +70,22 @@ function resellerToPublic(r: Reseller) {
     email: r.email,
     firstName: r.firstName,
     lastName: r.lastName,
+    dni: r.dni,
     storeName: r.storeName,
+    storeSlug: r.storeSlug,
     storePhoto: r.storePhoto,
+    storeBio: r.storeBio,
     whatsapp: r.whatsapp,
+    cbu: r.cbu,
+    alias: r.alias,
+    address: r.address,
+    city: r.city,
+    postalCode: r.postalCode,
+    deliveryMethod: r.deliveryMethod,
     referralCode: r.referralCode,
     isActive: r.isActive,
     onboardingSeenAt: r.onboardingSeenAt,
+    storeTheme: r.storeTheme,
     role: 'RESELLER' as const,
   }
 }
@@ -95,10 +105,17 @@ const ResellerLoginSchema = z.object({
 const ResellerRegisterSchema = z.object({
   firstName: z.string().min(1, 'El nombre es requerido').max(100),
   lastName: z.string().min(1, 'El apellido es requerido').max(100),
+  dni: z.string().min(6, 'DNI inválido').max(15),
   email: z.string().email('Email inválido'),
-  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  password: z.string()
+    .min(8, 'La contraseña debe tener al menos 8 caracteres')
+    .regex(/[a-zA-Z]/, 'La contraseña debe tener al menos una letra')
+    .regex(/[0-9]/, 'La contraseña debe tener al menos un número'),
   whatsapp: z.string().min(8, 'Número de WhatsApp inválido').max(20),
   storeName: z.string().min(1, 'El nombre de tu tienda es requerido').max(100),
+  address: z.string().min(3, 'La dirección es requerida').max(150),
+  city: z.string().min(2, 'La ciudad es requerida').max(80),
+  postalCode: z.string().min(3, 'El código postal es requerido').max(10),
   acceptTerms: z.literal(true, { errorMap: () => ({ message: 'Debés aceptar los Términos y Condiciones' }) }),
 })
 
@@ -138,7 +155,9 @@ export async function adminLogin(req: Request, res: Response): Promise<void> {
 
 /**
  * POST /auth/reseller/register
- * Registra un nuevo revendedor, genera referralCode y devuelve tokens.
+ * Registra un nuevo revendedor con estado PENDING — no inicia sesión sola,
+ * queda esperando que el admin la apruebe (evita que se creen cuentas/
+ * tiendas sin control).
  */
 export async function resellerRegister(req: Request, res: Response): Promise<void> {
   const data = ResellerRegisterSchema.parse(req.body)
@@ -146,26 +165,41 @@ export async function resellerRegister(req: Request, res: Response): Promise<voi
   const existing = await prisma.reseller.findUnique({ where: { email: data.email } })
   if (existing) { conflict(res, 'El email ya está registrado'); return }
 
+  try {
+    await assertCityHasCapacity(data.city)
+  } catch (e: unknown) {
+    const err = e as { status?: number; message?: string }
+    res.status(err.status ?? 409).json({ success: false, error: { code: 'CONFLICT', message: err.message } })
+    return
+  }
+
   const passwordHash = await hashPassword(data.password)
   const referralCode = await generateReferralCode()
+  const storeSlug = await generateStoreSlug(data.storeName)
 
-  const reseller = await prisma.reseller.create({
+  await prisma.reseller.create({
     data: {
       firstName: data.firstName,
       lastName: data.lastName,
+      dni: data.dni,
       email: data.email,
       passwordHash,
       whatsapp: data.whatsapp,
       storeName: data.storeName,
+      storeSlug,
+      address: data.address,
+      city: data.city,
+      postalCode: data.postalCode,
       referralCode,
+      approvalStatus: 'PENDING',
       termsAcceptedAt: new Date(),
     },
   })
 
-  const { accessToken, refreshToken } = await createResellerTokens(reseller.id, reseller.email)
-  setRefreshCookie(res, refreshToken)
-
-  created(res, { accessToken, user: resellerToPublic(reseller) })
+  created(res, {
+    pending: true,
+    message: 'Tu solicitud fue enviada. MBDA va a revisar tu cuenta y te avisamos cuando esté activa.',
+  })
 }
 
 /**
@@ -184,6 +218,8 @@ export async function resellerLogin(req: Request, res: Response): Promise<void> 
 
   const reseller = await prisma.reseller.findUnique({ where: { email } })
   if (!reseller) { recordFailedAttempt(email); unauthorized(res, 'Credenciales inválidas'); return }
+  if (reseller.approvalStatus === 'PENDING') { forbidden(res, 'Tu cuenta todavía está pendiente de aprobación por MBDA.'); return }
+  if (reseller.approvalStatus === 'REJECTED') { forbidden(res, 'Tu solicitud no fue aprobada. Contactá al administrador.'); return }
   if (!reseller.isActive) { forbidden(res, 'Tu cuenta fue desactivada. Contactá al administrador.'); return }
 
   const valid = await verifyPassword(password, reseller.passwordHash)

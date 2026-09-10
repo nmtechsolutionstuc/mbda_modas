@@ -24,12 +24,13 @@ export const authLimiter = rateLimit({
 })
 
 /**
- * Creación de pedidos públicos: 10 pedidos por IP cada hora.
- * Previene que un bot genere pedidos masivos y agote stock.
+ * Creación de reservas (la revendedora reserva stock para su clienta):
+ * 30 por IP cada hora. Previene que una cuenta comprometida o un script
+ * agote el stock creando reservas en cadena.
  */
-export const publicOrderLimiter = rateLimit({
+export const reservationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 10,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitHandler,
@@ -48,9 +49,10 @@ export const generalApiLimiter = rateLimit({
 })
 
 /**
- * Catálogo público: 120 req/minuto por IP.
+ * Tienda pública de una revendedora: 120 req/minuto por IP.
+ * Frena scraping masivo del catálogo público.
  */
-export const publicCatalogLimiter = rateLimit({
+export const publicStoreLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
   standardHeaders: true,

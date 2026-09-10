@@ -2,11 +2,20 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router'
 import {
   getAdminResellers, toggleResellerActive, getAdminCommissions, markCommissionPaid,
-  createReseller, updateReseller, deleteReseller,
-  type AdminReseller, type Commission,
+  createReseller, updateReseller, deleteReseller, resetResellerPassword, getResellerAudit,
+  approveReseller, rejectReseller,
+  type AdminReseller, type Commission, type ResellerAuditEntry,
 } from '../../api/admin'
 import { useToast } from '../../context/ToastContext'
 import { linkWhatsApp } from '../../utils/whatsapp'
+import { STORE_THEMES, STORE_THEME_ORDER } from '../../theme/storeThemes'
+import type { StoreTheme } from '../../types'
+import { ConfirmPasswordModal } from '../../components/admin/ConfirmPasswordModal'
+
+const SENSITIVE_RESELLER_FIELDS = ['cbu', 'alias', 'dni', 'address', 'city', 'postalCode'] as const
+const FIELD_LABEL: Record<string, string> = {
+  cbu: 'CBU', alias: 'Alias', dni: 'DNI', address: 'Dirección', city: 'Ciudad', postalCode: 'Código postal',
+}
 
 const INP: React.CSSProperties = {
   padding: '0.6rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid #e0dbd0',
@@ -33,6 +42,19 @@ function Badge({ active }: { active: boolean }) {
       border: `1px solid ${active ? '#10b98140' : '#ef444440'}`,
     }}>
       {active ? 'Activo' : 'Inactivo'}
+    </span>
+  )
+}
+
+function ApprovalBadge({ status }: { status: AdminReseller['approvalStatus'] }) {
+  if (status === 'APPROVED') return null
+  const color = status === 'PENDING' ? '#b8922a' : '#ef4444'
+  return (
+    <span style={{
+      display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 600,
+      background: `${color}20`, color, border: `1px solid ${color}40`, marginLeft: '0.4rem',
+    }}>
+      {status === 'PENDING' ? 'Pendiente de aprobación' : 'Rechazada'}
     </span>
   )
 }
@@ -133,6 +155,63 @@ function CommissionsPanel({ resellerId, resellerName }: { resellerId: string; re
   )
 }
 
+// ── Historial de cambios sensibles ────────────────────────────────────────────
+
+function AuditSection({ resellerId }: { resellerId: string }) {
+  const { showToast } = useToast()
+  const [logs, setLogs] = useState<ResellerAuditEntry[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getResellerAudit(resellerId)
+      .then(setLogs)
+      .catch(() => showToast('Error al cargar el historial', 'error'))
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resellerId])
+
+  return (
+    <div style={{ padding: '1rem 1.5rem 1.5rem' }}>
+      <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', color: '#111' }}>
+        Historial de cambios sensibles
+      </h3>
+      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1rem' }}>
+        CBU, alias, DNI y dirección — quién los cambió y cuándo.
+      </p>
+      {loading ? (
+        <p style={{ color: '#9ca3af', fontSize: '0.875rem', textAlign: 'center', padding: '1rem 0' }}>Cargando...</p>
+      ) : logs.length === 0 ? (
+        <p style={{ color: '#9ca3af', fontSize: '0.875rem', textAlign: 'center', padding: '1rem 0' }}>
+          No hay cambios registrados todavía.
+        </p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e0dbd0' }}>
+                {['Fecha', 'Campo', 'Admin', 'Anterior', 'Nuevo'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map(l => (
+                <tr key={l.id} style={{ borderBottom: '1px solid #f5f3ef' }}>
+                  <td style={{ padding: '0.5rem 0.75rem', color: '#6b7280', whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleString('es-AR')}</td>
+                  <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600 }}>{FIELD_LABEL[l.field] ?? l.field}</td>
+                  <td style={{ padding: '0.5rem 0.75rem' }}>{l.adminName}</td>
+                  <td style={{ padding: '0.5rem 0.75rem', color: '#dc2626' }}>{l.oldValue}</td>
+                  <td style={{ padding: '0.5rem 0.75rem', color: '#16a34a' }}>{l.newValue}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Modal detalle de revendedor ───────────────────────────────────────────────
 
 function ResellerModal({ reseller, onClose, onRefresh }: {
@@ -142,13 +221,24 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
 }) {
   const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [view, setView] = useState<'detail' | 'commissions'>('detail')
+  const [view, setView] = useState<'detail' | 'commissions' | 'audit'>('detail')
   const [editing, setEditing] = useState(false)
   const [firstName, setFirstName] = useState(reseller.firstName)
   const [lastName, setLastName] = useState(reseller.lastName)
   const [email, setEmail] = useState(reseller.email)
   const [whatsapp, setWhatsapp] = useState(reseller.whatsapp)
   const [storeName, setStoreName] = useState(reseller.storeName)
+  const [storeBio, setStoreBio] = useState(reseller.storeBio ?? '')
+  const [storeTheme, setStoreTheme] = useState<StoreTheme>(reseller.storeTheme)
+  const [cbu, setCbu] = useState(reseller.cbu ?? '')
+  const [alias, setAlias] = useState(reseller.alias ?? '')
+  const [dni, setDni] = useState(reseller.dni ?? '')
+  const [address, setAddress] = useState(reseller.address ?? '')
+  const [city, setCity] = useState(reseller.city ?? '')
+  const [postalCode, setPostalCode] = useState(reseller.postalCode ?? '')
+  const [resettingPass, setResettingPass] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(null)
 
   async function handleToggle() {
     if (!confirm(`¿${reseller.isActive ? 'Desactivar' : 'Activar'} a ${reseller.storeName}?`)) return
@@ -165,16 +255,92 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
     }
   }
 
-  async function handleSaveEdit() {
+  async function handleApprove() {
+    if (!confirm(`¿Aprobar la solicitud de "${reseller.storeName}"? Va a poder ingresar a su cuenta.`)) return
     setLoading(true)
     try {
-      await updateReseller(reseller.id, { firstName, lastName, email, whatsapp, storeName })
+      await approveReseller(reseller.id)
+      showToast('Revendedora aprobada', 'success')
+      onRefresh()
+      onClose()
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error al aprobar', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleReject() {
+    if (!confirm(`¿Rechazar la solicitud de "${reseller.storeName}"? No va a poder ingresar a su cuenta.`)) return
+    setLoading(true)
+    try {
+      await rejectReseller(reseller.id)
+      showToast('Solicitud rechazada', 'success')
+      onRefresh()
+      onClose()
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error al rechazar', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function buildEditPayload() {
+    return {
+      firstName, lastName, email, whatsapp, storeName, storeBio, storeTheme,
+      dni: dni || undefined, cbu: cbu || undefined, alias: alias || undefined,
+      address: address || undefined, city: city || undefined, postalCode: postalCode || undefined,
+    }
+  }
+
+  async function doSaveEdit(payload: Record<string, unknown>, confirmPassword?: string) {
+    setLoading(true)
+    try {
+      await updateReseller(reseller.id, { ...payload, ...(confirmPassword ? { confirmPassword } : {}) } as Parameters<typeof updateReseller>[1])
       showToast('Datos actualizados', 'success')
       setEditing(false)
       onRefresh()
       onClose()
     } catch (e: any) {
       showToast(e.response?.data?.error?.message ?? 'Error al guardar', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleSaveEdit() {
+    const payload = buildEditPayload()
+    const touchedSensitive = SENSITIVE_RESELLER_FIELDS.some(f => {
+      const current = { cbu, alias, dni, address, city, postalCode }[f]
+      return (current || '') !== (reseller[f] ?? '')
+    })
+    if (touchedSensitive) {
+      setPendingPayload(payload)
+      return
+    }
+    doSaveEdit(payload)
+  }
+
+  function handlePasswordConfirm(password: string) {
+    if (!pendingPayload) return
+    const payload = pendingPayload
+    setPendingPayload(null)
+    doSaveEdit(payload, password)
+  }
+
+  async function handleResetPassword() {
+    if (newPassword.length < 8) {
+      showToast('La contraseña debe tener al menos 8 caracteres', 'error')
+      return
+    }
+    setLoading(true)
+    try {
+      await resetResellerPassword(reseller.id, newPassword)
+      showToast('Contraseña restablecida', 'success')
+      setResettingPass(false)
+      setNewPassword('')
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error al restablecer', 'error')
     } finally {
       setLoading(false)
     }
@@ -195,7 +361,7 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
     }
   }
 
-  const catalogLink = `${window.location.origin}/catalogo?ref=${reseller.referralCode}`
+  const catalogLink = `${window.location.origin}/tienda/${reseller.storeSlug}`
   const waLink = linkWhatsApp(reseller.whatsapp, `Hola ${reseller.firstName}, te escribimos desde MBDA Modas.`)
 
   return (
@@ -208,13 +374,14 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
               {reseller.storeName}
             </h2>
             <Badge active={reseller.isActive} />
+            <ApprovalBadge status={reseller.approvalStatus} />
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#6b7280' }}>✕</button>
         </div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid #e0dbd0' }}>
-          {(['detail', 'commissions'] as const).map(v => (
+          {(['detail', 'commissions', 'audit'] as const).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -230,7 +397,7 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
                 borderBottom: view === v ? '2px solid #b8922a' : '2px solid transparent',
               }}
             >
-              {v === 'detail' ? 'Datos' : 'Comisiones'}
+              {v === 'detail' ? 'Datos' : v === 'commissions' ? 'Comisiones' : 'Historial'}
             </button>
           ))}
         </div>
@@ -240,11 +407,15 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1.5rem' }}>
               {[
                 { label: 'Nombre', value: `${reseller.firstName} ${reseller.lastName}` },
+                { label: 'DNI', value: reseller.dni ?? '-' },
                 { label: 'Email', value: reseller.email },
                 { label: 'WhatsApp', value: reseller.whatsapp },
                 { label: 'Código referido', value: reseller.referralCode },
-                { label: 'CBU', value: reseller.cbu ?? '-' },
-                { label: 'Alias', value: reseller.alias ?? '-' },
+                { label: 'Frase de la tienda', value: reseller.storeBio ?? '-' },
+                { label: 'Estilo de tienda', value: STORE_THEMES[reseller.storeTheme]?.label ?? reseller.storeTheme },
+                { label: 'CBU (para pagarle su comisión)', value: reseller.cbu ?? '-' },
+                { label: 'Alias (para pagarle su comisión)', value: reseller.alias ?? '-' },
+                { label: 'Dirección', value: [reseller.address, reseller.city, reseller.postalCode].filter(Boolean).join(', ') || '-' },
                 { label: 'Productos en catálogo', value: String(reseller._count.catalogItems) },
                 { label: 'Pedidos totales', value: String(reseller._count.orders) },
                 { label: 'Miembro desde', value: new Date(reseller.createdAt).toLocaleDateString('es-AR') },
@@ -258,7 +429,7 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
 
             {/* Link del catálogo */}
             <div style={{ background: '#f5f3ef', borderRadius: '0.75rem', padding: '0.875rem', marginBottom: '1.25rem' }}>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Link del catálogo</p>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Link de la tienda</p>
               <p style={{ fontSize: '0.8125rem', color: '#b8922a', wordBreak: 'break-all' }}>{catalogLink}</p>
               <button
                 onClick={() => { navigator.clipboard.writeText(catalogLink); showToast('Link copiado', 'success') }}
@@ -267,6 +438,22 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
                 Copiar link
               </button>
             </div>
+
+            {reseller.approvalStatus === 'PENDING' && (
+              <div style={{ background: '#fdf3e3', border: '1px solid #f0d999', borderRadius: '0.75rem', padding: '0.875rem', marginBottom: '1.25rem' }}>
+                <p style={{ fontSize: '0.8125rem', color: '#8a6d1f', marginBottom: '0.75rem' }}>
+                  Se registró sola y todavía no puede ingresar a su cuenta. Aprobala o rechazala.
+                </p>
+                <div style={{ display: 'flex', gap: '0.625rem' }}>
+                  <button onClick={handleApprove} disabled={loading} style={{ flex: 1, padding: '0.55rem', borderRadius: '0.5rem', border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
+                    ✓ Aprobar
+                  </button>
+                  <button onClick={handleReject} disabled={loading} style={{ flex: 1, padding: '0.55rem', borderRadius: '0.5rem', border: '1.5px solid #ef4444', background: '#fff', color: '#ef4444', fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
+                    ✕ Rechazar
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Acciones */}
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -280,6 +467,12 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
                 style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1.5px solid #e0dbd0', background: '#fff', color: '#111', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}
               >
                 ✏️ Editar
+              </button>
+              <button
+                onClick={() => setResettingPass(true)}
+                style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1.5px solid #e0dbd0', background: '#fff', color: '#111', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}
+              >
+                🔑 Resetear contraseña
               </button>
               <button
                 onClick={handleToggle}
@@ -298,6 +491,26 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
                 </button>
               )}
             </div>
+
+            {resettingPass && (
+              <div style={{ marginTop: '1rem', background: '#f5f3ef', borderRadius: '0.75rem', padding: '1rem' }}>
+                <label style={LABEL}>Nueva contraseña para {reseller.storeName}</label>
+                <input
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 8 caracteres"
+                  style={{ ...INP, marginBottom: '0.625rem' }}
+                />
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button onClick={() => { setResettingPass(false); setNewPassword('') }} style={{ flex: 1, padding: '0.55rem', borderRadius: '0.5rem', border: '1.5px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                    Cancelar
+                  </button>
+                  <button onClick={handleResetPassword} disabled={loading} style={{ flex: 2, padding: '0.55rem', borderRadius: '0.5rem', border: 'none', background: '#111', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
+                    {loading ? 'Guardando...' : 'Restablecer'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -319,12 +532,57 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
                 <input value={storeName} onChange={e => setStoreName(e.target.value)} style={INP} />
               </div>
               <div>
-                <label style={LABEL}>Email</label>
-                <input value={email} onChange={e => setEmail(e.target.value)} style={INP} />
+                <label style={LABEL}>Frase de la tienda</label>
+                <input value={storeBio} onChange={e => setStoreBio(e.target.value.slice(0, 200))} style={INP} maxLength={200} placeholder="Ej: Moda que te acompaña todos los días." />
               </div>
               <div>
-                <label style={LABEL}>WhatsApp</label>
-                <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} style={INP} />
+                <label style={LABEL}>Estilo de tienda</label>
+                <select value={storeTheme} onChange={e => setStoreTheme(e.target.value as StoreTheme)} style={INP}>
+                  {STORE_THEME_ORDER.map(key => (
+                    <option key={key} value={key}>{STORE_THEMES[key].label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={LABEL}>Email</label>
+                  <input value={email} onChange={e => setEmail(e.target.value)} style={INP} />
+                </div>
+                <div>
+                  <label style={LABEL}>WhatsApp</label>
+                  <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} style={INP} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={LABEL}>DNI</label>
+                  <input value={dni} onChange={e => setDni(e.target.value)} style={INP} />
+                </div>
+                <div>
+                  <label style={LABEL}>Código postal</label>
+                  <input value={postalCode} onChange={e => setPostalCode(e.target.value)} style={INP} />
+                </div>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.25rem 0 0' }}>
+                El CBU/alias de acá son para que MBDA le pague su comisión — no son los que ve la compradora al pagar (esos salen de la Configuración global).
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={LABEL}>CBU (para pagarle su comisión)</label>
+                  <input value={cbu} onChange={e => setCbu(e.target.value)} style={INP} maxLength={22} placeholder="22 dígitos" />
+                </div>
+                <div>
+                  <label style={LABEL}>Alias (para pagarle su comisión)</label>
+                  <input value={alias} onChange={e => setAlias(e.target.value)} style={INP} />
+                </div>
+              </div>
+              <div>
+                <label style={LABEL}>Dirección</label>
+                <input value={address} onChange={e => setAddress(e.target.value)} style={INP} />
+              </div>
+              <div>
+                <label style={LABEL}>Ciudad</label>
+                <input value={city} onChange={e => setCity(e.target.value)} style={INP} />
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.625rem' }}>
@@ -351,7 +609,17 @@ function ResellerModal({ reseller, onClose, onRefresh }: {
             resellerName={`${reseller.firstName} ${reseller.lastName}`}
           />
         )}
+
+        {view === 'audit' && <AuditSection resellerId={reseller.id} />}
       </div>
+
+      {pendingPayload && (
+        <ConfirmPasswordModal
+          message="Para modificar CBU, alias, DNI o dirección de esta revendedora necesitás confirmar tu contraseña de administrador. Cualquier cambio queda registrado en el historial."
+          onConfirm={handlePasswordConfirm}
+          onCancel={() => setPendingPayload(null)}
+        />
+      )}
     </div>
   )
 }
@@ -424,7 +692,7 @@ export function AdminResellersPage() {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [page, setPage] = useState(1)
-  const [activeFilter, setActiveFilter] = useState<'' | 'true' | 'false'>('')
+  const [activeFilter, setActiveFilter] = useState<'' | 'true' | 'false' | 'pending'>('')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<AdminReseller | null>(null)
 
@@ -432,7 +700,8 @@ export function AdminResellersPage() {
     setLoading(true)
     try {
       const params: Record<string, unknown> = { page, limit: 20 }
-      if (activeFilter !== '') params.isActive = activeFilter === 'true'
+      if (activeFilter === 'pending') params.approvalStatus = 'PENDING'
+      else if (activeFilter !== '') params.isActive = activeFilter === 'true'
       const res = await getAdminResellers(params as any)
       setResellers(res.resellers)
       setTotal(res.total)
@@ -446,13 +715,13 @@ export function AdminResellersPage() {
 
   useEffect(() => { load() }, [load])
 
-  function handleFilter(val: '' | 'true' | 'false') {
+  function handleFilter(val: '' | 'true' | 'false' | 'pending') {
     setActiveFilter(val)
     setPage(1)
   }
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
 
         {/* Breadcrumb */}
@@ -475,6 +744,7 @@ export function AdminResellersPage() {
             { label: 'Todos', value: '' as const },
             { label: 'Activos', value: 'true' as const },
             { label: 'Inactivos', value: 'false' as const },
+            { label: 'Pendientes', value: 'pending' as const },
           ].map(f => (
             <button
               key={f.value}
@@ -529,7 +799,7 @@ export function AdminResellersPage() {
                       <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', color: '#b8922a', fontWeight: 700 }}>{r.referralCode}</td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>{r._count.catalogItems}</td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>{r._count.orders}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}><Badge active={r.isActive} /></td>
+                      <td style={{ padding: '0.75rem 1rem' }}><Badge active={r.isActive} /><ApprovalBadge status={r.approvalStatus} /></td>
                       <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
                         {new Date(r.createdAt).toLocaleDateString('es-AR')}
                       </td>

@@ -1,5 +1,4 @@
 import multer from 'multer'
-import path from 'node:path'
 import fs from 'node:fs'
 import { v2 as cloudinary } from 'cloudinary'
 import { env } from '../config/env'
@@ -19,11 +18,24 @@ if (env.storageProvider === 'cloudinary') {
   })
 }
 
+// La extensión con la que se guarda (y con la que express.static decide el
+// Content-Type al servirla) sale del mimetype YA VALIDADO, nunca del nombre de
+// archivo que manda el cliente — si se confiara en `file.originalname`, alguien
+// podría subir "foto.svg" o "foto.html" declarando Content-Type: image/jpeg
+// (el mimetype es un dato que el cliente controla) y terminar sirviendo un
+// archivo ejecutable/con script como si fuera una imagen (XSS almacenado).
+const ALLOWED_MIME_EXT: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/jpg':  '.jpg',
+  'image/png':  '.png',
+  'image/webp': '.webp',
+}
+
 // ── Multer — siempre guarda en disco para luego decidir destino ───────────────
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase()
+    const ext = ALLOWED_MIME_EXT[file.mimetype] ?? '.jpg'
     cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`)
   },
 })
@@ -32,8 +44,7 @@ export const upload = multer({
   storage,
   limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB por foto
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
-    if (allowed.includes(file.mimetype)) {
+    if (ALLOWED_MIME_EXT[file.mimetype]) {
       cb(null, true)
     } else {
       cb(new Error('Solo se aceptan imágenes JPG, PNG o WebP'))

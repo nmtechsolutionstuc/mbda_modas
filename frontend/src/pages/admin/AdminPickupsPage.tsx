@@ -78,9 +78,7 @@ function PickupCard({ pickup, onChanged }: { pickup: PendingPickup; onChanged: (
       </div>
 
       <div style={{ fontSize: '0.8125rem', color: '#374151', marginBottom: '1rem' }}>
-        {pickup.paymentMethod === 'CASH' && pickup.cashDueDate && (
-          <p>💵 Paga en efectivo — entrega hasta el <strong>{new Date(pickup.cashDueDate).toLocaleDateString('es-AR')}</strong></p>
-        )}
+        {pickup.paymentMethod === 'CASH' && <p>💵 Pagado en efectivo</p>}
         {pickup.paymentMethod === 'TRANSFER' && <p>💸 Pagado por transferencia</p>}
         {!pickup.paymentMethod && <p style={{ color: '#9ca3af' }}>Sin método de pago registrado</p>}
       </div>
@@ -128,7 +126,7 @@ export function AdminPickupsPage() {
   })
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '1.5rem 1rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '1.5rem 1rem' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto' }}>
         <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
           <Link to="/admin" style={{ color: '#b8922a', textDecoration: 'none' }}>Panel</Link> / Retiros

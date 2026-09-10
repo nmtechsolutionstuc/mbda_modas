@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Link } from 'react-router'
 import {
   getProducts, createProduct, updateProduct, deleteProduct,
-  getCategories, createCategory, updateCategory,
+  getCategories, createCategory, updateCategory, deleteCategory,
   type Product, type Category,
 } from '../../api/admin'
 import { Modal } from '../../components/ui/Modal'
@@ -35,10 +35,7 @@ const ProductSchema = z.object({
   basePrice: z.coerce.number().positive('Precio inválido'),
   commissionPct: z.coerce.number().min(1).max(100),
   categoryId: z.string().min(1, 'Seleccioná una categoría'),
-  weightGrams: z.coerce.number().int().positive().optional().or(z.literal('')),
-  dimH: z.coerce.number().positive().optional().or(z.literal('')),
-  dimW: z.coerce.number().positive().optional().or(z.literal('')),
-  dimL: z.coerce.number().positive().optional().or(z.literal('')),
+  youtubeVideoUrl: z.string().optional(),
   variants: z.array(VariantSchema).min(1, 'Agregá al menos una variante'),
 })
 
@@ -106,7 +103,7 @@ export function AdminProductsPage() {
   function openCreate() {
     setEditingProduct(null)
     setPhotoFiles([]); setPhotoPreviews([]); setDeletePhotos([])
-    reset({ name: '', description: '', basePrice: undefined, commissionPct: 20, categoryId: '', weightGrams: undefined, dimH: undefined, dimW: undefined, dimL: undefined, variants: [{ size: '', color: '', stock: 0 }] })
+    reset({ name: '', description: '', basePrice: undefined, commissionPct: 20, categoryId: '', youtubeVideoUrl: '', variants: [{ size: '', color: '', stock: 0 }] })
     setProductModal(true)
   }
 
@@ -118,10 +115,7 @@ export function AdminProductsPage() {
       basePrice: parseFloat(p.basePrice),
       commissionPct: parseFloat(p.commissionPct),
       categoryId: p.categoryId,
-      weightGrams: p.weightGrams ?? ('' as unknown as undefined),
-      dimH: p.dimH != null ? parseFloat(p.dimH) : ('' as unknown as undefined),
-      dimW: p.dimW != null ? parseFloat(p.dimW) : ('' as unknown as undefined),
-      dimL: p.dimL != null ? parseFloat(p.dimL) : ('' as unknown as undefined),
+      youtubeVideoUrl: p.youtubeVideoUrl ?? '',
       variants: p.variants.map(v => ({ id: v.id, size: v.size, color: v.color, stock: v.stock })),
     })
     setProductModal(true)
@@ -152,10 +146,7 @@ export function AdminProductsPage() {
       fd.append('basePrice', String(values.basePrice))
       fd.append('commissionPct', String(values.commissionPct))
       fd.append('categoryId', values.categoryId)
-      if (values.weightGrams) fd.append('weightGrams', String(values.weightGrams))
-      if (values.dimH) fd.append('dimH', String(values.dimH))
-      if (values.dimW) fd.append('dimW', String(values.dimW))
-      if (values.dimL) fd.append('dimL', String(values.dimL))
+      fd.append('youtubeVideoUrl', values.youtubeVideoUrl ?? '')
       // Incluir id de variante existente para upsert inteligente en el backend
       fd.append('variants', JSON.stringify(values.variants.map(v => ({
         ...(v.id ? { id: v.id } : {}),
@@ -183,19 +174,15 @@ export function AdminProductsPage() {
     try {
       await deleteProduct(id)
       loadProducts()
-    } catch { alert('Error al eliminar') }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+      alert(msg ?? 'Error al eliminar')
+    }
   }
 
   async function handleToggleActive(p: Product) {
     const fd = new FormData()
     fd.append('isActive', String(!p.isActive))
-    await updateProduct(p.id, fd)
-    loadProducts()
-  }
-
-  async function handleToggleShowInFeed(p: Product) {
-    const fd = new FormData()
-    fd.append('showInFeed', String(!p.showInFeed))
     await updateProduct(p.id, fd)
     loadProducts()
   }
@@ -232,10 +219,21 @@ export function AdminProductsPage() {
     loadCategories()
   }
 
+  async function handleDeleteCat(c: Category) {
+    if (!confirm(`¿Eliminar la categoría "${c.name}"? Esta acción no se puede deshacer.`)) return
+    try {
+      await deleteCategory(c.id)
+      loadCategories()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+      alert(msg ?? 'Error al eliminar categoría')
+    }
+  }
+
   const totalPages = Math.ceil(total / LIMIT)
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
 
         {/* Breadcrumb */}
@@ -327,13 +325,6 @@ export function AdminProductsPage() {
                       </div>
                       <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                         <button
-                          onClick={() => handleToggleShowInFeed(p)}
-                          style={{ fontSize: '0.7rem', padding: '0.25rem 0.55rem', borderRadius: '99px', border: '1px solid', cursor: 'pointer', fontWeight: 600,
-                            borderColor: p.showInFeed ? '#b8922a' : '#e0dbd0', background: p.showInFeed ? '#fef9ec' : '#fff', color: p.showInFeed ? '#b8922a' : '#9ca3af' }}
-                        >
-                          {p.showInFeed ? '✓ En feed' : 'Mostrar en feed'}
-                        </button>
-                        <button
                           onClick={() => handleToggleAvailableForResellers(p)}
                           style={{ fontSize: '0.7rem', padding: '0.25rem 0.55rem', borderRadius: '99px', border: '1px solid', cursor: 'pointer', fontWeight: 600,
                             borderColor: p.availableForResellers ? '#16a34a' : '#e0dbd0', background: p.availableForResellers ? '#f0fdf4' : '#fff', color: p.availableForResellers ? '#16a34a' : '#9ca3af' }}
@@ -377,6 +368,7 @@ export function AdminProductsPage() {
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => openEditCat(c)} style={BTN('secondary')}>Editar</button>
                     <button onClick={() => handleToggleCatActive(c)} style={BTN('secondary')}>{c.isActive ? 'Desact.' : 'Activar'}</button>
+                    <button onClick={() => handleDeleteCat(c)} style={BTN('danger')}>Eliminar</button>
                   </div>
                 </div>
               ))}
@@ -430,29 +422,13 @@ export function AdminProductsPage() {
               </div>
             </div>
 
-            {/* Peso y dimensiones para cálculo de envío */}
             <div>
-              <p style={{ ...LABEL, marginBottom: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
-                📦 Datos de envío <span style={{ fontWeight: 400 }}>(opcionales — se usan para cotizar el flete)</span>
+              <label style={LABEL}>Video de YouTube (opcional)</label>
+              <input {...register('youtubeVideoUrl')} style={INP} placeholder="https://www.youtube.com/watch?v=..." />
+              {errors.youtubeVideoUrl && <p style={ERR}>{errors.youtubeVideoUrl.message}</p>}
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                Se muestra embebido en el detalle de la prenda en la tienda pública.
               </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
-                <div>
-                  <label style={LABEL}>Peso (g)</label>
-                  <input {...register('weightGrams')} type="number" min="1" style={INP} placeholder="250" />
-                </div>
-                <div>
-                  <label style={LABEL}>Alto (cm)</label>
-                  <input {...register('dimH')} type="number" min="0.1" step="0.1" style={INP} placeholder="10" />
-                </div>
-                <div>
-                  <label style={LABEL}>Ancho (cm)</label>
-                  <input {...register('dimW')} type="number" min="0.1" step="0.1" style={INP} placeholder="15" />
-                </div>
-                <div>
-                  <label style={LABEL}>Largo (cm)</label>
-                  <input {...register('dimL')} type="number" min="0.1" step="0.1" style={INP} placeholder="20" />
-                </div>
-              </div>
             </div>
 
             {/* Variantes */}

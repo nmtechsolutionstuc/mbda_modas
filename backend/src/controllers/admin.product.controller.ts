@@ -9,9 +9,12 @@ import {
   listCategories,
   createCategory,
   updateCategory,
+  deleteCategory,
 } from '../services/product.service'
 import { persistPhotos } from '../services/upload.service'
 import { ok, created, notFound, badRequest } from '../utils/apiResponse'
+import { stripHtml } from '../utils/sanitize'
+import { validateYoutubeUrl } from '../utils/youtube'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -29,10 +32,7 @@ const CreateProductSchema = z.object({
   commissionPct: z.coerce.number().min(1).max(100),
   categoryId: z.string().uuid('categoryId inválido'),
   kind: z.enum(['PHYSICAL', 'SERVICE', 'DIGITAL']).default('PHYSICAL'),
-  weightGrams: z.coerce.number().int().positive().optional(),
-  dimH: z.coerce.number().positive().optional(),
-  dimW: z.coerce.number().positive().optional(),
-  dimL: z.coerce.number().positive().optional(),
+  youtubeVideoUrl: z.string().optional(),
   variants: z.preprocess(
     v => (typeof v === 'string' ? JSON.parse(v) : v),
     z.array(VariantSchema).min(1, 'Debe tener al menos una variante'),
@@ -46,13 +46,9 @@ const UpdateProductSchema = z.object({
   commissionPct: z.coerce.number().min(1).max(100).optional(),
   categoryId: z.string().uuid().optional(),
   kind: z.enum(['PHYSICAL', 'SERVICE', 'DIGITAL']).optional(),
-  weightGrams: z.coerce.number().int().positive().optional().nullable(),
-  dimH: z.coerce.number().positive().optional().nullable(),
-  dimW: z.coerce.number().positive().optional().nullable(),
-  dimL: z.coerce.number().positive().optional().nullable(),
   isActive: z.preprocess(v => v === 'true' || v === true, z.boolean()).optional(),
-  showInFeed: z.preprocess(v => v === 'true' || v === true, z.boolean()).optional(),
   availableForResellers: z.preprocess(v => v === 'true' || v === true, z.boolean()).optional(),
+  youtubeVideoUrl: z.string().optional(),
   variants: z.preprocess(
     v => (typeof v === 'string' ? JSON.parse(v) : v),
     z.array(VariantSchema).min(1).optional(),
@@ -89,7 +85,21 @@ export async function listProductsHandler(req: Request, res: Response): Promise<
 }
 
 export async function createProductHandler(req: Request, res: Response): Promise<void> {
-  const data = CreateProductSchema.parse(req.body)
+  const parsed = CreateProductSchema.parse(req.body)
+
+  if (parsed.youtubeVideoUrl) {
+    const result = validateYoutubeUrl(parsed.youtubeVideoUrl)
+    if (!result.valid) { badRequest(res, result.error!); return }
+  }
+
+  // name/description quedan expuestos en la tienda pública — se limpia cualquier
+  // etiqueta HTML antes de guardar (XSS almacenado).
+  const data = {
+    ...parsed,
+    name: stripHtml(parsed.name),
+    description: parsed.description ? stripHtml(parsed.description) : parsed.description,
+    youtubeVideoUrl: parsed.youtubeVideoUrl || undefined,
+  }
   const files = req.files as Express.Multer.File[] | undefined
   const photos = await persistPhotos(files ?? [])
 
@@ -99,7 +109,20 @@ export async function createProductHandler(req: Request, res: Response): Promise
 
 export async function updateProductHandler(req: Request, res: Response): Promise<void> {
   const { id } = req.params
-  const data = UpdateProductSchema.parse(req.body)
+  const parsed = UpdateProductSchema.parse(req.body)
+
+  if (parsed.youtubeVideoUrl) {
+    const result = validateYoutubeUrl(parsed.youtubeVideoUrl)
+    if (!result.valid) { badRequest(res, result.error!); return }
+  }
+
+  const data = {
+    ...parsed,
+    ...(parsed.name !== undefined && { name: stripHtml(parsed.name) }),
+    ...(parsed.description !== undefined && { description: stripHtml(parsed.description) }),
+    // Un string vacío significa "sacar el video"; undefined significa "no lo tocó".
+    ...(parsed.youtubeVideoUrl !== undefined && { youtubeVideoUrl: parsed.youtubeVideoUrl || null }),
+  }
   const files = req.files as Express.Multer.File[] | undefined
   const addPhotos = await persistPhotos(files ?? [])
 
@@ -144,4 +167,11 @@ export async function updateCategoryHandler(req: Request, res: Response): Promis
   }
   const category = await updateCategory(id, data)
   ok(res, category)
+}
+
+export async function deleteCategoryHandler(req: Request, res: Response): Promise<void> {
+  const { id } = req.params
+  const deleted = await deleteCategory(id)
+  if (!deleted) { notFound(res, 'Categoría no encontrada'); return }
+  ok(res, { id })
 }

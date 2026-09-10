@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router'
 import {
   getConfig, updateConfig, getConfigAudit,
+  getBonusTiers, updateBonusTiers,
   type Config, type ConfigAuditEntry,
 } from '../../api/admin'
 import { useToast } from '../../context/ToastContext'
+import { ConfirmPasswordModal } from '../../components/admin/ConfirmPasswordModal'
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -37,12 +39,6 @@ const BTN_PRIMARY: React.CSSProperties = {
   fontWeight: 600,
   fontSize: '0.875rem',
 }
-const BTN_GHOST: React.CSSProperties = {
-  ...BTN_PRIMARY,
-  background: 'transparent',
-  color: '#6b7280',
-  border: '1.5px solid #e0dbd0',
-}
 
 // ── CBU client-side validation ────────────────────────────────────────────────
 
@@ -59,57 +55,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.1rem', fontWeight: 700, color: '#111', margin: 0 }}>{title}</h2>
       </div>
       <div style={{ padding: '1.25rem' }}>{children}</div>
-    </div>
-  )
-}
-
-// ── Confirm Password Modal ────────────────────────────────────────────────────
-
-interface ConfirmPasswordModalProps {
-  onConfirm: (password: string) => void
-  onCancel: () => void
-}
-
-function ConfirmPasswordModal({ onConfirm, onCancel }: ConfirmPasswordModalProps) {
-  const [pwd, setPwd] = useState('')
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
-    }}>
-      <div style={{ background: '#fff', borderRadius: '1rem', width: '100%', maxWidth: '420px', overflow: 'hidden' }}>
-        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e0dbd0', background: '#faf9f6' }}>
-          <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.15rem', fontWeight: 700, color: '#111', margin: 0 }}>
-            🔒 Confirmá tu contraseña
-          </h3>
-        </div>
-        <div style={{ padding: '1.5rem' }}>
-          <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1rem' }}>
-            Para modificar <strong>CBU, alias o WhatsApp</strong> necesitás confirmar tu contraseña de administrador.
-            Cualquier cambio queda registrado en el historial de auditoría.
-          </p>
-          <label style={LABEL}>Contraseña</label>
-          <input
-            type="password"
-            value={pwd}
-            onChange={e => setPwd(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && pwd && onConfirm(pwd)}
-            style={INP}
-            placeholder="Tu contraseña actual"
-            autoFocus
-          />
-        </div>
-        <div style={{ padding: '0 1.5rem 1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={BTN_GHOST}>Cancelar</button>
-          <button
-            onClick={() => pwd && onConfirm(pwd)}
-            disabled={!pwd}
-            style={{ ...BTN_PRIMARY, opacity: pwd ? 1 : 0.5 }}
-          >
-            Confirmar
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -232,27 +177,55 @@ export function AdminConfigPage() {
   const [stockReserveHours, setStockReserveHours] = useState(24)
   const [maxCashDeliveryDays, setMaxCashDeliveryDays] = useState(2)
   const [pickupExpiryHours, setPickupExpiryHours] = useState(48)
-  const [defaultCommissionPct, setDefaultCommissionPct] = useState('')
-  const [zipnovaDiscountPctHome, setZipnovaDiscountPctHome] = useState('')
-  const [zipnovaDiscountPctBranch, setZipnovaDiscountPctBranch] = useState('')
-  const [shippingEnabled, setShippingEnabled] = useState(false)
-
-  // Feed "Prendas en Promo"
-  const [feedEnabled, setFeedEnabled] = useState(true)
-  const [feedSectionName, setFeedSectionName] = useState('Prendas en Promo')
-  const [feedMaxItems, setFeedMaxItems] = useState(20)
-  const [feedMaxPerReseller, setFeedMaxPerReseller] = useState(3)
-  const [autoApproveListings, setAutoApproveListings] = useState(false)
+  const [cityResellerLimitEnabled, setCityResellerLimitEnabled] = useState(false)
+  const [cityResellerLimitCount, setCityResellerLimitCount] = useState(5)
   const [helpUrl, setHelpUrl] = useState('')
 
   // Terms
   const [termsContent, setTermsContent] = useState('')
+  const [privacyPolicyContent, setPrivacyPolicyContent] = useState('')
+  const [changePolicyContent, setChangePolicyContent] = useState('')
+  const [withdrawalRightContent, setWithdrawalRightContent] = useState('')
+
+  // Recompensa por volumen del ciclo
+  const [bonusTiers, setBonusTiers] = useState<{ thresholdAmount: string; bonusPct: string }[]>([])
+  const [savingBonusTiers, setSavingBonusTiers] = useState(false)
+
+  function updateBonusTierField(index: number, field: 'thresholdAmount' | 'bonusPct', value: string) {
+    setBonusTiers(prev => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)))
+  }
+  function addBonusTier() {
+    setBonusTiers(prev => [...prev, { thresholdAmount: '', bonusPct: '' }])
+  }
+  function removeBonusTier(index: number) {
+    setBonusTiers(prev => prev.filter((_, i) => i !== index))
+  }
+  async function saveBonusTiers() {
+    setSavingBonusTiers(true)
+    try {
+      const updated = await updateBonusTiers(bonusTiers.map(t => ({
+        thresholdAmount: Number(t.thresholdAmount),
+        bonusPct: Number(t.bonusPct),
+      })))
+      setBonusTiers(updated.map(t => ({ thresholdAmount: t.thresholdAmount, bonusPct: t.bonusPct })))
+      showToast('Recompensa por volumen guardada', 'success')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: { message?: string } } } }
+      showToast(e?.response?.data?.error?.message ?? 'Error al guardar', 'error')
+    } finally {
+      setSavingBonusTiers(false)
+    }
+  }
 
   // Password confirm modal
   const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(null)
   const [pendingSection, setPendingSection] = useState<string | null>(null)
 
   useEffect(() => {
+    getBonusTiers()
+      .then(tiers => setBonusTiers(tiers.map(t => ({ thresholdAmount: t.thresholdAmount, bonusPct: t.bonusPct }))))
+      .catch(() => showToast('Error al cargar la recompensa por volumen', 'error'))
+
     getConfig()
       .then(c => {
         setConfig(c)
@@ -263,17 +236,13 @@ export function AdminConfigPage() {
         setStockReserveHours(c.stockReserveHours)
         setMaxCashDeliveryDays(c.maxCashDeliveryDays)
         setPickupExpiryHours(c.pickupExpiryHours)
-        setDefaultCommissionPct(String(c.defaultCommissionPct ?? ''))
-        setZipnovaDiscountPctHome(String(c.zipnovaDiscountPctHome ?? '0'))
-        setZipnovaDiscountPctBranch(String(c.zipnovaDiscountPctBranch ?? '0'))
-        setShippingEnabled(c.shippingEnabled)
-        setFeedEnabled(c.feedEnabled)
-        setFeedSectionName(c.feedSectionName)
-        setFeedMaxItems(c.feedMaxItems)
-        setFeedMaxPerReseller(c.feedMaxPerReseller)
-        setAutoApproveListings(c.autoApproveListings)
+        setCityResellerLimitEnabled(c.cityResellerLimitEnabled)
+        setCityResellerLimitCount(c.cityResellerLimitCount)
         setHelpUrl(c.helpUrl)
         setTermsContent(c.termsContent ?? '')
+        setPrivacyPolicyContent(c.privacyPolicyContent ?? '')
+        setChangePolicyContent(c.changePolicyContent ?? '')
+        setWithdrawalRightContent(c.withdrawalRightContent ?? '')
       })
       .catch(() => showToast('Error al cargar configuración', 'error'))
       .finally(() => setLoading(false))
@@ -313,14 +282,14 @@ export function AdminConfigPage() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: 'calc(100vh - 60px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>
         Cargando...
       </div>
     )
   }
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '780px', margin: '0 auto' }}>
 
         <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1rem' }}>
@@ -386,7 +355,7 @@ export function AdminConfigPage() {
         {/* ── Pedidos y stock ──────────────────────────────────────────────── */}
         <Section title="📦 Pedidos y stock">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={LABEL}>Días de despacho</label>
                 <input value={dispatchDays} onChange={e => setDispatchDays(Number(e.target.value))} type="number" min="1" max="30" style={INP} />
@@ -394,10 +363,6 @@ export function AdminConfigPage() {
               <div>
                 <label style={LABEL}>Reserva de stock (horas)</label>
                 <input value={stockReserveHours} onChange={e => setStockReserveHours(Number(e.target.value))} type="number" min="1" max="168" style={INP} />
-              </div>
-              <div>
-                <label style={LABEL}>Comisión por defecto (%)</label>
-                <input value={defaultCommissionPct} onChange={e => setDefaultCommissionPct(e.target.value)} type="number" min="1" max="100" style={INP} placeholder="20" />
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
@@ -421,7 +386,6 @@ export function AdminConfigPage() {
                 onClick={() => doSave('orders', {
                   dispatchDays,
                   stockReserveHours,
-                  defaultCommissionPct: defaultCommissionPct ? Number(defaultCommissionPct) : null,
                   maxCashDeliveryDays,
                   pickupExpiryHours,
                 })}
@@ -433,95 +397,96 @@ export function AdminConfigPage() {
           </div>
         </Section>
 
-        {/* ── Cotización de envíos ─────────────────────────────────────────── */}
-        <Section title="🚚 Envíos">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={shippingEnabled} onChange={e => setShippingEnabled(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-              <span style={{ fontWeight: 600, color: '#111', fontSize: '0.9rem' }}>Envíos activos</span>
-            </label>
-            <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '-0.5rem' }}>
-              Por defecto la venta se maneja por reserva y retiro en el local. Activá esto solo si querés ofrecer también envío a domicilio con cotización Zipnova.
+        {/* ── Recompensa por volumen del ciclo ─────────────────────────────── */}
+        <Section title="🚀 Recompensa por volumen (por ciclo)">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: 0 }}>
+              Al superar cada monto de facturación DENTRO de un mismo ciclo (se reinicia en cada ciclo nuevo), la revendedora
+              gana un % extra que sale del margen de MBDA — se suma aparte de su ganancia normal, sin importar el precio que
+              ella le haya puesto al producto.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', opacity: shippingEnabled ? 1 : 0.5 }}>
-              <div>
-                <label style={LABEL}>Descuento envío a domicilio (%)</label>
-                <input
-                  value={zipnovaDiscountPctHome}
-                  onChange={e => setZipnovaDiscountPctHome(e.target.value)}
-                  type="number" min="0" max="50" step="1"
-                  style={INP}
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label style={LABEL}>Descuento envío a sucursal (%)</label>
-                <input
-                  value={zipnovaDiscountPctBranch}
-                  onChange={e => setZipnovaDiscountPctBranch(e.target.value)}
-                  type="number" min="0" max="50" step="1"
-                  style={INP}
-                  placeholder="0"
-                />
-              </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1.5px solid #e0dbd0' }}>
+                    {['Facturación del ciclo desde', 'Recompensa extra (%)', ''].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.5rem', color: '#6b7280', fontWeight: 600 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {bonusTiers.map((t, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f5f3ef' }}>
+                      <td style={{ padding: '0.5rem' }}>
+                        <span style={{ color: '#6b7280', marginRight: '0.375rem' }}>$</span>
+                        <input
+                          value={t.thresholdAmount}
+                          onChange={e => updateBonusTierField(i, 'thresholdAmount', e.target.value)}
+                          type="number" min="0" style={{ ...INP, width: '160px', display: 'inline-block' }}
+                        />
+                      </td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <input
+                          value={t.bonusPct}
+                          onChange={e => updateBonusTierField(i, 'bonusPct', e.target.value)}
+                          type="number" min="0" max="100" style={{ ...INP, width: '100px' }}
+                        />
+                      </td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <button onClick={() => removeBonusTier(i)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.8rem' }}>
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {bonusTiers.length === 0 && (
+                    <tr>
+                      <td colSpan={3} style={{ padding: '0.75rem 0.5rem', color: '#9ca3af', fontStyle: 'italic' }}>
+                        Sin tramos configurados — nadie recibe recompensa extra todavía.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <p style={{ fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.5 }}>
-              Zipnova agrega su margen al precio del transportista. Compará con Correo Argentino directo y ajustá el porcentaje de diferencia.
-              Ejemplo: Zipnova domicilio $3.000 → Correo $2.500 = 17% de descuento.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button onClick={addBonusTier} style={{ background: 'none', border: '1.5px dashed #e0dbd0', borderRadius: '0.5rem', padding: '0.5rem 1rem', color: '#6b7280', cursor: 'pointer', fontSize: '0.8125rem' }}>
+                + Agregar tramo
+              </button>
               <button
-                disabled={saving === 'shipping'}
-                onClick={() => doSave('shipping', {
-                  shippingEnabled,
-                  zipnovaDiscountPctHome:   zipnovaDiscountPctHome   ? Number(zipnovaDiscountPctHome)   : 0,
-                  zipnovaDiscountPctBranch: zipnovaDiscountPctBranch ? Number(zipnovaDiscountPctBranch) : 0,
-                })}
-                style={{ ...BTN_PRIMARY, opacity: saving === 'shipping' ? 0.6 : 1 }}
+                disabled={savingBonusTiers}
+                onClick={saveBonusTiers}
+                style={{ ...BTN_PRIMARY, opacity: savingBonusTiers ? 0.6 : 1 }}
               >
-                {saving === 'shipping' ? 'Guardando...' : 'Guardar'}
+                {savingBonusTiers ? 'Guardando...' : 'Guardar recompensa'}
               </button>
             </div>
           </div>
         </Section>
 
-        {/* ── Feed "Prendas en Promo" ──────────────────────────────────────── */}
-        <Section title="🏷️ Feed de prendas destacadas">
+        {/* ── Límite de revendedoras por ciudad ────────────────────────────── */}
+        <Section title="📍 Límite de revendedoras por ciudad">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={feedEnabled} onChange={e => setFeedEnabled(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-              <span style={{ fontWeight: 600, color: '#111', fontSize: '0.9rem' }}>Feed activo</span>
+              <input type="checkbox" checked={cityResellerLimitEnabled} onChange={e => setCityResellerLimitEnabled(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+              <span style={{ fontWeight: 600, color: '#111', fontSize: '0.9rem' }}>Limitar cantidad de revendedoras activas por ciudad</span>
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+            {cityResellerLimitEnabled && (
               <div>
-                <label style={LABEL}>Nombre de la sección</label>
-                <input value={feedSectionName} onChange={e => setFeedSectionName(e.target.value)} style={INP} placeholder="Prendas en Promo" />
+                <label style={LABEL}>Máximo de revendedoras activas por ciudad</label>
+                <input value={cityResellerLimitCount} onChange={e => setCityResellerLimitCount(Number(e.target.value))} type="number" min="1" max="1000" style={{ ...INP, width: '160px' }} />
               </div>
-              <div>
-                <label style={LABEL}>Máximo de prendas en el feed</label>
-                <input value={feedMaxItems} onChange={e => setFeedMaxItems(Number(e.target.value))} type="number" min="1" max="200" style={INP} />
-              </div>
-              <div>
-                <label style={LABEL}>Máximo por tienda externa</label>
-                <input value={feedMaxPerReseller} onChange={e => setFeedMaxPerReseller(Number(e.target.value))} type="number" min="1" max="20" style={INP} />
-              </div>
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={autoApproveListings} onChange={e => setAutoApproveListings(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-              <span style={{ fontWeight: 600, color: '#111', fontSize: '0.9rem' }}>Aprobación automática de productos externos</span>
-            </label>
+            )}
             <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-              Si está desactivada, cada prenda que suba un usuario queda pendiente hasta que la apruebes en "Prendas del feed".
+              Desactivado por defecto. Si lo activás, no se van a poder registrar (ni crear desde admin) nuevas revendedoras en una ciudad que ya alcanzó el máximo.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
-                disabled={saving === 'feed'}
-                onClick={() => doSave('feed', {
-                  feedEnabled, feedSectionName, feedMaxItems, feedMaxPerReseller, autoApproveListings,
-                })}
-                style={{ ...BTN_PRIMARY, opacity: saving === 'feed' ? 0.6 : 1 }}
+                disabled={saving === 'city-limit'}
+                onClick={() => doSave('city-limit', { cityResellerLimitEnabled, cityResellerLimitCount })}
+                style={{ ...BTN_PRIMARY, opacity: saving === 'city-limit' ? 0.6 : 1 }}
               >
-                {saving === 'feed' ? 'Guardando...' : 'Guardar'}
+                {saving === 'city-limit' ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
           </div>
@@ -578,6 +543,71 @@ export function AdminConfigPage() {
           </div>
         </Section>
 
+        {/* ── Legales adicionales ──────────────────────────────────────────── */}
+        <Section title="⚖️ Legales (privacidad, cambios, arrepentimiento)">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div>
+              <label style={LABEL}>Política de Privacidad (Markdown)</label>
+              {config?.privacyPolicyUpdatedAt && (
+                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.375rem' }}>
+                  Última actualización: {new Date(config.privacyPolicyUpdatedAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
+              )}
+              <textarea
+                value={privacyPolicyContent}
+                onChange={e => setPrivacyPolicyContent(e.target.value)}
+                style={{ ...INP, minHeight: '160px', resize: 'vertical', fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                placeholder="# Política de Privacidad..."
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                <button disabled={saving === 'privacy'} onClick={() => doSave('privacy', { privacyPolicyContent })} style={{ ...BTN_PRIMARY, opacity: saving === 'privacy' ? 0.6 : 1 }}>
+                  {saving === 'privacy' ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label style={LABEL}>Política de Cambios (Markdown)</label>
+              {config?.changePolicyUpdatedAt && (
+                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.375rem' }}>
+                  Última actualización: {new Date(config.changePolicyUpdatedAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
+              )}
+              <textarea
+                value={changePolicyContent}
+                onChange={e => setChangePolicyContent(e.target.value)}
+                style={{ ...INP, minHeight: '160px', resize: 'vertical', fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                placeholder="# Política de Cambios..."
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                <button disabled={saving === 'changes'} onClick={() => doSave('changes', { changePolicyContent })} style={{ ...BTN_PRIMARY, opacity: saving === 'changes' ? 0.6 : 1 }}>
+                  {saving === 'changes' ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label style={LABEL}>Derecho de Arrepentimiento (Markdown)</label>
+              {config?.withdrawalRightUpdatedAt && (
+                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.375rem' }}>
+                  Última actualización: {new Date(config.withdrawalRightUpdatedAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
+              )}
+              <textarea
+                value={withdrawalRightContent}
+                onChange={e => setWithdrawalRightContent(e.target.value)}
+                style={{ ...INP, minHeight: '160px', resize: 'vertical', fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                placeholder="# Derecho de Arrepentimiento..."
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                <button disabled={saving === 'withdrawal'} onClick={() => doSave('withdrawal', { withdrawalRightContent })} style={{ ...BTN_PRIMARY, opacity: saving === 'withdrawal' ? 0.6 : 1 }}>
+                  {saving === 'withdrawal' ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Section>
+
         {/* ── Historial de auditoría ──────────────────────────────────────── */}
         <AuditLogSection />
 
@@ -586,6 +616,7 @@ export function AdminConfigPage() {
       {/* Password confirmation modal */}
       {pendingPayload && pendingSection && (
         <ConfirmPasswordModal
+          message="Para modificar CBU, alias o WhatsApp necesitás confirmar tu contraseña de administrador. Cualquier cambio queda registrado en el historial de auditoría."
           onConfirm={handlePasswordConfirm}
           onCancel={() => { setPendingPayload(null); setPendingSection(null) }}
         />

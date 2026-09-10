@@ -1,23 +1,70 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../../context/ToastContext'
 import { isReseller } from '../../types'
-import { markOnboardingSeen } from '../../api/reseller'
+import { markOnboardingSeen, getDashboardSummary, type DashboardSummary } from '../../api/reseller'
+
+function fmtMoney(n: number) {
+  return `$${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+}
+
+function deltaCaption(current: number, previous: number, unit: 'money' | 'count'): string {
+  if (previous <= 0) return current > 0 ? 'nuevo este mes' : 'sin cambios vs mes anterior'
+  const diff = current - previous
+  const pct = Math.round((diff / previous) * 100)
+  const sign = diff >= 0 ? '+' : ''
+  if (unit === 'count') return `${sign}${diff} vs mes anterior`
+  return `${sign}${pct}% vs mes anterior`
+}
+
+// ── Resumen (ventas, pedidos, reservas del mes) ───────────────────────────────
+
+function ResumenStats({ summary }: { summary: DashboardSummary | null }) {
+  const stats = [
+    {
+      label: 'Ventas',
+      value: summary ? fmtMoney(summary.salesThisMonth) : '—',
+      caption: summary ? deltaCaption(summary.salesThisMonth, summary.salesLastMonth, 'money') : '',
+    },
+    {
+      label: 'Pedidos',
+      value: summary ? summary.ordersThisMonth : '—',
+      caption: summary ? deltaCaption(summary.ordersThisMonth, summary.ordersLastMonth, 'count') : '',
+    },
+    {
+      label: 'Reservas',
+      value: summary ? summary.pendingReservations : '—',
+      caption: 'Pendientes de pago',
+    },
+  ]
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+      {stats.map(s => (
+        <div key={s.label} style={{ background: '#fff', borderRadius: '1rem', padding: '1.25rem', border: '1px solid #e0dbd0' }}>
+          <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#6b7280' }}>{s.label}</p>
+          <p style={{ fontSize: '1.75rem', fontWeight: 700, color: '#111', lineHeight: 1.2, margin: '0.25rem 0' }}>{s.value}</p>
+          {s.caption && <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{s.caption}</p>}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const ONBOARDING_STEPS = [
-  { icon: '🎽', title: 'Subí tus propios productos al feed', desc: 'Publicá hasta unas pocas prendas propias en la vitrina "Prendas en Promo" y coordiná la venta directo por WhatsApp.' },
-  { icon: '🛍️', title: 'Revendé productos de MBDA', desc: 'Agregalos a tu catálogo, elegí si es venta presencial u online, y compartí tu link único.' },
-  { icon: '💰', title: 'Cómo funciona el precio y la comisión', desc: 'En modo presencial ganás una comisión fija. En modo online, vos ponés el precio y te quedás con la diferencia (o la comisión si vendés al precio base).' },
-  { icon: '🏪', title: 'Cómo se hace un retiro en el local', desc: 'Cuando confirmás una venta, se genera un comprobante de retiro. Vos o el comprador lo muestran en el local para retirar la prenda dentro del plazo.' },
+  { icon: '🛍️', title: 'Armá tu catálogo', desc: 'Elegí productos de MBDA Modas, definí tu precio de venta y mostralos en tu tienda pública.' },
+  { icon: '📋', title: 'Reservá para tus clientas', desc: 'Cuando una clienta te confirma la compra por WhatsApp, cargás la reserva vos. MBDA verifica el pago y recién ahí se descuenta el stock.' },
+  { icon: '💰', title: 'Cómo funciona tu ganancia', desc: 'Si vendés al precio oficial, ganás la comisión de ese producto. Si le sumás un aumento, esa diferencia es tuya — nunca por debajo del precio oficial.' },
+  { icon: '📦', title: 'Ciclos y despacho', desc: 'Cada venta confirmada se suma al ciclo de compra abierto. En Concepción retirás en el local; fuera de Concepción, MBDA despacha a tu domicilio.' },
 ]
 
 function OnboardingModal({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <div style={{ background: '#fff', borderRadius: '1.25rem', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem 1.75rem' }}>
-        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: 700, color: '#111', marginBottom: '0.375rem', textAlign: 'center' }}>
-          ¡Bienvenido a MBDA! 🎉
+        <h2 style={{ fontFamily: 'var(--f-display)', fontSize: '1.5rem', fontWeight: 700, color: '#111', marginBottom: '0.375rem', textAlign: 'center' }}>
+          ¡Bienvenida a MBDA! 🎉
         </h2>
         <p style={{ color: '#6b7280', textAlign: 'center', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
           Esto es lo que podés hacer desde tu panel:
@@ -44,23 +91,26 @@ function OnboardingModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-interface MenuItem { title: string; desc: string; icon: string; href: string; active: boolean; phase?: string }
-const MENU: MenuItem[] = [
-  { title: 'Mi Catálogo', desc: 'Agregá y gestioná tus productos con tus precios', icon: '🛍️', href: '/panel/catalogo', active: true },
-  { title: 'Mi Perfil', desc: 'Editá los datos de tu tienda y datos de cobro', icon: '⚙️', href: '/panel/perfil', active: true },
-  { title: 'Mis Ventas', desc: 'Seguí el estado de tus pedidos', icon: '📦', href: '/panel/ventas', active: true },
-  { title: 'Mis Comisiones', desc: 'Revisá tus ganancias acumuladas', icon: '💰', href: '/panel/comisiones', active: true },
-  { title: 'Mis Prendas', desc: 'Publicá tus propias prendas en la vitrina', icon: '🎽', href: '/panel/mis-prendas', active: true },
+interface QuickLink { title: string; icon: string; href: string }
+const QUICK_LINKS: QuickLink[] = [
+  { title: 'Mi catálogo', icon: '🛍️', href: '/panel/catalogo' },
+  { title: 'Crear reserva', icon: '📋', href: '/panel/reservar' },
+  { title: 'Mis ventas', icon: '🧾', href: '/panel/ventas' },
+  { title: 'Mi cuenta', icon: '⚙️', href: '/panel/perfil' },
 ]
 
 export function PanelDashboard() {
   const { user, setUser } = useAuthStore()
   const { showToast } = useToast()
   const reseller = user && isReseller(user) ? user : null
-  const name      = reseller?.firstName ?? 'Revendedor'
   const storeName = reseller?.storeName ?? ''
-  const refCode   = reseller?.referralCode ?? ''
+  const storeSlug = reseller?.storeSlug ?? ''
   const [showOnboarding, setShowOnboarding] = useState(!!reseller && !reseller.onboardingSeenAt)
+  const [summary, setSummary] = useState<DashboardSummary | null>(null)
+
+  useEffect(() => {
+    getDashboardSummary().then(setSummary).catch(() => {/* silencioso */})
+  }, [])
 
   async function closeOnboarding() {
     setShowOnboarding(false)
@@ -71,78 +121,75 @@ export function PanelDashboard() {
   }
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '960px', margin: '0 auto' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: '2rem' }}>
-          <p style={{ fontSize: '0.875rem', color: '#b8922a', fontWeight: 600, marginBottom: '0.25rem' }}>
-            Panel de revendedor
-          </p>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '2rem', fontWeight: 700, color: '#111' }}>
-            ¡Hola, {name}! 👋
-          </h1>
-          {storeName && (
-            <p style={{ color: '#6b7280', marginTop: '0.25rem' }}>
-              Tienda: <strong style={{ color: '#111' }}>{storeName}</strong>
-            </p>
-          )}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem' }}>
+          <div>
+            <h1 style={{ fontFamily: 'var(--f-display)', fontSize: '2rem', fontWeight: 700, color: '#111' }}>
+              Resumen
+            </h1>
+            {storeName && (
+              <p style={{ color: '#6b7280', marginTop: '0.125rem' }}>
+                Tienda: <strong style={{ color: '#111' }}>{storeName}</strong>
+              </p>
+            )}
+          </div>
+          <span style={{ fontSize: '0.8125rem', color: '#9ca3af', fontWeight: 600 }}>Este mes</span>
         </div>
 
+        <ResumenStats summary={summary} />
+
         {/* Link único */}
-        {refCode && (
+        {storeSlug && (
           <div style={{ background: '#fff', borderRadius: '1rem', padding: '1.5rem', border: '1px solid #e0dbd0', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
-                <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.25rem' }}>Tu link de catálogo único</p>
-                <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: 700, color: '#b8922a', letterSpacing: '0.06em' }}>
-                  {refCode}
-                </p>
+                <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.25rem' }}>El link de tu tienda</p>
                 <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.125rem' }}>
-                  {window.location.origin}/catalogo?ref={refCode}
+                  {window.location.origin}/tienda/{storeSlug}
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/catalogo?ref=${refCode}`)
-                    .then(() => showToast('¡Link copiado al portapapeles!', 'success'))
-                    .catch(() => showToast('No se pudo copiar el link', 'error'))
-                }}
-                style={{ background: '#111', color: '#f5f3ef', padding: '0.625rem 1.375rem', borderRadius: '0.625rem', border: 'none', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}
-              >
-                📋 Copiar link
-              </button>
+              <div style={{ display: 'flex', gap: '0.625rem' }}>
+                <a
+                  href={`/tienda/${storeSlug}`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ background: '#fff', color: '#111', padding: '0.625rem 1.375rem', borderRadius: '0.625rem', border: '1.5px solid #e0dbd0', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}
+                >
+                  Ver mi tienda
+                </a>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/tienda/${storeSlug}`)
+                      .then(() => showToast('¡Link copiado al portapapeles!', 'success'))
+                      .catch(() => showToast('No se pudo copiar el link', 'error'))
+                  }}
+                  style={{ background: '#111', color: '#f5f3ef', padding: '0.625rem 1.375rem', borderRadius: '0.625rem', border: 'none', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  📋 Copiar link
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Módulos */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-          {MENU.map(item => (
-            item.active
-              ? (
-                <Link
-                  key={item.title}
-                  to={item.href}
-                  style={{ background: '#fff', borderRadius: '1rem', padding: '1.5rem', border: '1px solid #e0dbd0', textDecoration: 'none', display: 'block', transition: 'box-shadow 0.2s, transform 0.2s' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'; (e.currentTarget as HTMLAnchorElement).style.transform = 'translateY(-2px)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'none'; (e.currentTarget as HTMLAnchorElement).style.transform = 'translateY(0)' }}
-                >
-                  <div style={{ fontSize: '1.75rem', marginBottom: '0.75rem' }}>{item.icon}</div>
-                  <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.1rem', fontWeight: 700, color: '#111', marginBottom: '0.375rem' }}>{item.title}</h3>
-                  <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>{item.desc}</p>
-                  <p style={{ marginTop: '0.875rem', fontSize: '0.8125rem', color: '#b8922a', fontWeight: 600 }}>Ir →</p>
-                </Link>
-              ) : (
-                <div key={item.title} style={{ background: '#fff', borderRadius: '1rem', padding: '1.5rem', border: '1px solid #e0dbd0', opacity: 0.5 }}>
-                  <div style={{ fontSize: '1.75rem', marginBottom: '0.75rem' }}>{item.icon}</div>
-                  <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.1rem', fontWeight: 700, color: '#111', marginBottom: '0.375rem' }}>{item.title}</h3>
-                  <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>{item.desc}</p>
-                  <span style={{ display: 'inline-block', marginTop: '0.75rem', fontSize: '0.75rem', background: '#f5f3ef', color: '#b8922a', padding: '0.2rem 0.5rem', borderRadius: '99px', border: '1px solid #e8e3d5' }}>
-                    {item.phase}
-                  </span>
-                </div>
-              )
+        {/* Accesos rápidos */}
+        <h3 style={{ fontFamily: 'var(--f-display)', fontSize: '1.05rem', fontWeight: 700, color: '#111', marginBottom: '0.75rem' }}>
+          Accesos rápidos
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          {QUICK_LINKS.map(item => (
+            <Link
+              key={item.title}
+              to={item.href}
+              style={{ background: '#fff', borderRadius: '0.75rem', padding: '1rem', border: '1px solid #e0dbd0', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.625rem', transition: 'box-shadow 0.2s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.06)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'none' }}
+            >
+              <span style={{ fontSize: '1.25rem' }}>{item.icon}</span>
+              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#111' }}>{item.title}</span>
+            </Link>
           ))}
         </div>
       </div>

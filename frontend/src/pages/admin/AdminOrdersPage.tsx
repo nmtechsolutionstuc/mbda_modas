@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router'
 import {
-  getAdminOrders, confirmOrderPayment, dispatchOrder, cancelAdminOrder,
-  markOrderProofReceived, rejectOrderPayment, cancelSingleItem, downloadShippingLabel,
+  getAdminOrders, confirmOrderPayment, extendCashPickup, dispatchOrder, cancelAdminOrder,
+  markOrderProofReceived, rejectOrderPayment, cancelSingleItem,
   type Order, type OrderStatus,
 } from '../../api/admin'
+import { getPublicConfig } from '../../api/public'
 import { useToast } from '../../context/ToastContext'
 import { linkWhatsApp } from '../../utils/whatsapp'
 
@@ -24,12 +25,6 @@ const STATUS_COLOR: Record<OrderStatus, string> = {
   CONFIRMED: '#10b981',
   DISPATCHED: '#6366f1',
   CANCELLED: '#ef4444',
-}
-
-const SHIPPING_LABEL: Record<string, string> = {
-  CORREO_ARGENTINO: 'Correo Argentino',
-  ANDREANI: 'Andreani',
-  LOCAL_PICKUP: 'Retiro en persona',
 }
 
 function fmt(val: string | number) {
@@ -67,18 +62,50 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
   const [cancelReason, setCancelReason] = useState('')
   const [rejectReason, setRejectReason] = useState('')
   const [loading, setLoading] = useState(false)
-  const [view, setView] = useState<'detail' | 'dispatch' | 'cancel' | 'reject'>('detail')
+  const [view, setView] = useState<'detail' | 'confirm' | 'extend-cash' | 'dispatch' | 'cancel' | 'reject'>('detail')
   const [cancelingItemId, setCancelingItemId] = useState<string | null>(null)
 
+  // Confirmar pago: cómo pagó el comprador — sea transferencia o efectivo,
+  // "confirmar" siempre significa que la plata YA está en mano/cuenta. Si el
+  // pedido ya venía marcado como efectivo (se le extendió el plazo antes), se
+  // preselecciona ese método.
+  const [confirmMethod, setConfirmMethod] = useState<'TRANSFER' | 'CASH' | null>(order.paymentMethod ?? null)
+  const [confirmedProof, setConfirmedProof] = useState(false)
+
+  // Extender para efectivo: NO confirma el pago, solo estira el plazo de la reserva
+  const [cashDate, setCashDate] = useState('')
+  const [maxCashDays, setMaxCashDays] = useState(2)
+
+  useEffect(() => {
+    getPublicConfig().then(c => setMaxCashDays(c.maxCashDeliveryDays)).catch(() => {/* usa default */})
+  }, [])
+
   async function handleConfirm() {
+    if (!confirmMethod) { showToast('Elegí cómo pagó el comprador', 'error'); return }
+    if (!confirmedProof) { showToast('Confirmá que la plata ya está en tu mano o cuenta', 'error'); return }
     setLoading(true)
     try {
-      await confirmOrderPayment(order.id)
+      await confirmOrderPayment(order.id, { paymentMethod: confirmMethod })
       showToast('Pago confirmado. Comisión generada.', 'success')
       onRefresh()
       onClose()
     } catch (e: any) {
       showToast(e.response?.data?.message ?? 'Error al confirmar', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleExtendCash() {
+    if (!cashDate) { showToast('Indicá la fecha límite', 'error'); return }
+    setLoading(true)
+    try {
+      await extendCashPickup(order.id, new Date(cashDate).toISOString())
+      showToast('Reserva extendida. Todavía falta confirmar el pago cuando cobres.', 'success')
+      onRefresh()
+      onClose()
+    } catch (e: any) {
+      showToast(e.response?.data?.error?.message ?? 'Error al extender', 'error')
     } finally {
       setLoading(false)
     }
@@ -168,40 +195,13 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
     }
   }
 
-  const [labelLoading, setLabelLoading] = useState(false)
-
-  async function handleDownloadLabel() {
-    setLabelLoading(true)
-    try {
-      const { blob, trackingNumber } = await downloadShippingLabel(order.id)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `etiqueta-${order.orderNumber}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      if (trackingNumber) {
-        showToast(`Etiqueta descargada. Tracking: ${trackingNumber}`, 'success')
-      } else {
-        showToast('Etiqueta descargada', 'success')
-      }
-    } catch (e: any) {
-      const msg = e.response?.data?.error?.message ?? 'No se pudo generar la etiqueta. Verificá la configuración de Zipnova.'
-      showToast(msg, 'error')
-    } finally {
-      setLabelLoading(false)
-    }
-  }
-
   const waConfirmLink = linkWhatsApp(
     order.reseller.whatsapp,
     `✅ Recibimos tu pago para el pedido ${order.orderNumber}. Pronto comenzamos a prepararlo. ¡Gracias por tu compra!`,
   )
   const waDispatchLink = linkWhatsApp(
-    order.buyerWhatsapp,
-    `📦 Tu pedido ${order.orderNumber} fue despachado con tracking ${trackingInput || order.trackingNumber || 'N/D'}. Podés seguirlo en el correo correspondiente.`,
+    order.reseller.whatsapp,
+    `📦 Despachamos tu pedido ${order.orderNumber}${(trackingInput || order.trackingNumber) ? ` con seguimiento ${trackingInput || order.trackingNumber}` : ''}. ¡Gracias!`,
   )
 
   return (
@@ -224,33 +224,6 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
             <Row label="Nombre" value={order.buyerName} />
             <Row label="WhatsApp" value={order.buyerWhatsapp} />
             {order.buyerEmail && <Row label="Email" value={order.buyerEmail} />}
-            <Row label="Envío" value={SHIPPING_LABEL[order.shippingMethod]} />
-            {order.shippingAddress && (
-              <Row label="Dirección" value={`${order.shippingAddress}, ${order.shippingCity}, ${order.shippingProvince} (${order.shippingZip})`} />
-            )}
-            {/* Estimado de envío Zipnova (guardado al crear el pedido) */}
-            {order.shippingMethod !== 'LOCAL_PICKUP' && order.shippingQuoteData && (() => {
-              try {
-                const q = JSON.parse(order.shippingQuoteData) as { estimated?: boolean; carrierName?: string; serviceType?: string; estimatedCost?: number }
-                if (!q.estimated) return null
-                return (
-                  <div style={{ marginTop: '0.625rem', padding: '0.75rem 1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.5rem' }}>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                      📦 Envío estimado
-                      <span style={{ fontSize: '0.65rem', background: '#fef9ec', color: '#92400e', border: '1px solid #fde68a', borderRadius: '99px', padding: '0.05rem 0.4rem', fontWeight: 700 }}>
-                        ESTIMADO
-                      </span>
-                    </p>
-                    <p style={{ fontSize: '0.875rem', color: '#374151', margin: 0, fontWeight: 700 }}>
-                      ~${q.estimatedCost?.toLocaleString('es-AR') ?? '?'}
-                    </p>
-                    <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.25rem 0 0' }}>
-                      El cliente solo transfirió el total de productos. Confirmar costo real por WhatsApp.
-                    </p>
-                  </div>
-                )
-              } catch { return null }
-            })()}
             {order.buyerNote && (
               <div style={{ marginTop: '0.625rem', padding: '0.75rem 1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.5rem' }}>
                 <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400e', marginBottom: '0.25rem' }}>📝 Nota del comprador</p>
@@ -304,26 +277,10 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
               <tfoot>
                 <tr>
                   <td colSpan={5} style={{ padding: '0.75rem 0.25rem', textAlign: 'right', fontWeight: 700 }}>
-                    {order.shippingMethod !== 'LOCAL_PICKUP' ? 'Total productos:' : 'Total:'}
+                    Total:
                   </td>
                   <td style={{ padding: '0.75rem 0.25rem', fontWeight: 700, color: '#b8922a' }}>{fmt(order.total)}</td>
                 </tr>
-                {order.shippingMethod !== 'LOCAL_PICKUP' && (() => {
-                  try {
-                    const q = JSON.parse(order.shippingQuoteData ?? '{}') as { estimated?: boolean; estimatedCost?: number }
-                    if (!q.estimated) return null
-                    return (
-                      <tr>
-                        <td colSpan={5} style={{ padding: '0.25rem 0.25rem', textAlign: 'right', fontSize: '0.8125rem', color: '#92400e', fontStyle: 'italic' }}>
-                          + Envío estimado:
-                        </td>
-                        <td style={{ padding: '0.25rem 0.25rem', fontSize: '0.8125rem', color: '#92400e', fontStyle: 'italic' }}>
-                          ~${q.estimatedCost?.toLocaleString('es-AR') ?? '?'}
-                        </td>
-                      </tr>
-                    )
-                  } catch { return null }
-                })()}
               </tfoot>
             </table>
           </Section>
@@ -344,6 +301,13 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
             </Section>
           )}
 
+          {/* Extendido para efectivo — todavía no confirmado */}
+          {(order.status === 'PENDING' || order.status === 'PROOF_RECEIVED') && order.paymentMethod === 'CASH' && order.cashDueDate && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginTop: '1rem', fontSize: '0.8125rem', color: '#92400e' }}>
+              💵 Se extendió la reserva para que pague en efectivo hasta el <strong>{new Date(order.cashDueDate).toLocaleDateString('es-AR')}</strong>. Esto todavía NO confirma el pago — hacelo recién cuando tengas la plata en la mano.
+            </div>
+          )}
+
           {/* Acciones */}
           {view === 'detail' && (
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
@@ -352,15 +316,18 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
                   <ActionBtn onClick={handleMarkProof} loading={loading} color="#3b82f6">
                     📎 Marcar comprobante recibido
                   </ActionBtn>
-                  <ActionBtn onClick={handleConfirm} loading={loading} color="#10b981">
+                  <ActionBtn onClick={() => setView('confirm')} color="#10b981">
                     ✅ Confirmar pago
+                  </ActionBtn>
+                  <ActionBtn onClick={() => setView('extend-cash')} color="#f59e0b" outline>
+                    🕒 Extender para efectivo
                   </ActionBtn>
                   <ActionBtn onClick={() => setView('cancel')} color="#ef4444" outline>Cancelar pedido</ActionBtn>
                 </>
               )}
               {order.status === 'PROOF_RECEIVED' && (
                 <>
-                  <ActionBtn onClick={handleConfirm} loading={loading} color="#10b981">
+                  <ActionBtn onClick={() => setView('confirm')} color="#10b981">
                     ✅ Confirmar pago
                   </ActionBtn>
                   <a href={waConfirmLink} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
@@ -377,26 +344,95 @@ function OrderDetailModal({ order, onClose, onRefresh }: {
                   <ActionBtn onClick={() => setView('dispatch')} color="#6366f1">
                     🚚 Marcar como despachado
                   </ActionBtn>
-                  {order.shippingMethod !== 'LOCAL_PICKUP' && order.shippingQuoteData && (
-                    <ActionBtn onClick={handleDownloadLabel} loading={labelLoading} color="#0369a1">
-                      📄 Descargar etiqueta Zipnova
-                    </ActionBtn>
-                  )}
                   <ActionBtn onClick={() => setView('cancel')} color="#ef4444" outline>Cancelar pedido</ActionBtn>
                 </>
               )}
               {order.status === 'DISPATCHED' && (
-                <>
-                  <a href={waDispatchLink} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-                    <ActionBtn onClick={() => {}} color="#6366f1">📱 Avisar al comprador</ActionBtn>
-                  </a>
-                  {order.shippingMethod !== 'LOCAL_PICKUP' && order.shippingQuoteData && (
-                    <ActionBtn onClick={handleDownloadLabel} loading={labelLoading} color="#0369a1">
-                      📄 Descargar etiqueta Zipnova
-                    </ActionBtn>
-                  )}
-                </>
+                <a href={waDispatchLink} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                  <ActionBtn onClick={() => {}} color="#6366f1">📱 Avisar a la revendedora</ActionBtn>
+                </a>
               )}
+            </div>
+          )}
+
+          {/* Sub-vista: confirmar pago */}
+          {view === 'confirm' && (
+            <div style={{ marginTop: '1.5rem', padding: '1.25rem', background: '#f5f3ef', borderRadius: '0.75rem' }}>
+              <h3 style={{ fontWeight: 700, marginBottom: '0.75rem', color: '#111' }}>¿Cómo pagó {order.buyerName}?</h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem', marginBottom: '1rem' }}>
+                <button onClick={() => setConfirmMethod('TRANSFER')} style={{
+                  padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
+                  border: `2px solid ${confirmMethod === 'TRANSFER' ? '#111' : '#e0dbd0'}`,
+                  background: confirmMethod === 'TRANSFER' ? '#111' : '#fff',
+                  color: confirmMethod === 'TRANSFER' ? '#fff' : '#374151',
+                }}>💸 Transferencia</button>
+                <button onClick={() => setConfirmMethod('CASH')} style={{
+                  padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
+                  border: `2px solid ${confirmMethod === 'CASH' ? '#111' : '#e0dbd0'}`,
+                  background: confirmMethod === 'CASH' ? '#111' : '#fff',
+                  color: confirmMethod === 'CASH' ? '#fff' : '#374151',
+                }}>💵 Efectivo</button>
+              </div>
+
+              {confirmMethod === 'TRANSFER' && (
+                <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '0.75rem', padding: '1rem', marginBottom: '1rem' }}>
+                  <p style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+                    ⚠️ Verificá que la transferencia YA esté acreditada en la cuenta de MBDA antes de confirmar.
+                  </p>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: '#111', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={confirmedProof} onChange={e => setConfirmedProof(e.target.checked)} style={{ marginTop: '0.2rem' }} />
+                    Confirmo que vi el comprobante y el pago está acreditado.
+                  </label>
+                </div>
+              )}
+
+              {confirmMethod === 'CASH' && (
+                <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '0.75rem', padding: '1rem', marginBottom: '1rem' }}>
+                  <p style={{ color: '#92400e', fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+                    ⚠️ Confirmá esto recién cuando ya tengas la plata en la mano — no antes.
+                  </p>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: '#111', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={confirmedProof} onChange={e => setConfirmedProof(e.target.checked)} style={{ marginTop: '0.2rem' }} />
+                    Confirmo que ya recibí el efectivo.
+                  </label>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <ActionBtn onClick={handleConfirm} loading={loading} color="#10b981">
+                  ✅ Confirmar pago
+                </ActionBtn>
+                <ActionBtn onClick={() => setView('detail')} color="#6b7280" outline>Volver</ActionBtn>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-vista: extender para efectivo (NO confirma el pago) */}
+          {view === 'extend-cash' && (
+            <div style={{ marginTop: '1.5rem', padding: '1.25rem', background: '#f5f3ef', borderRadius: '0.75rem' }}>
+              <h3 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#111' }}>Extender reserva para pago en efectivo</h3>
+              <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                Esto NO confirma el pago ni genera comisión — solo le da más tiempo a la clienta antes de que la reserva se cancele sola.
+                Cuando tengas el efectivo en la mano, volvé acá y usá "Confirmar pago".
+              </p>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#1e1914', marginBottom: '0.375rem' }}>
+                Fecha límite (máximo {maxCashDays} día{maxCashDays !== 1 ? 's' : ''})
+              </label>
+              <input
+                type="date"
+                value={cashDate}
+                min={new Date().toISOString().slice(0, 10)}
+                max={new Date(Date.now() + maxCashDays * 86400000).toISOString().slice(0, 10)}
+                onChange={e => setCashDate(e.target.value)}
+                style={{ padding: '0.55rem 0.75rem', borderRadius: '0.5rem', border: '1.5px solid #e0dbd0', width: '100%', boxSizing: 'border-box', marginBottom: '1rem' }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <ActionBtn onClick={handleExtendCash} loading={loading} color="#f59e0b">
+                  🕒 Extender
+                </ActionBtn>
+                <ActionBtn onClick={() => setView('detail')} color="#6b7280" outline>Volver</ActionBtn>
+              </div>
             </div>
           )}
 
@@ -559,7 +595,7 @@ export function AdminOrdersPage() {
   }
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
 
         {/* Breadcrumb */}
@@ -608,7 +644,7 @@ export function AdminOrdersPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #e0dbd0', background: '#faf9f7' }}>
-                    {['Nº Pedido', 'Comprador', 'Revendedor', 'Total', 'Envío', 'Estado', 'Fecha', ''].map(h => (
+                    {['Nº Pedido', 'Comprador', 'Revendedor', 'Total', 'Estado', 'Fecha', ''].map(h => (
                       <th key={h} style={{ textAlign: 'left', padding: '0.75rem 1rem', color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -626,7 +662,6 @@ export function AdminOrdersPage() {
                       <td style={{ padding: '0.75rem 1rem' }}>{order.buyerName}</td>
                       <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>{order.reseller.storeName}</td>
                       <td style={{ padding: '0.75rem 1rem', fontWeight: 600 }}>{fmt(order.total)}</td>
-                      <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.8125rem' }}>{SHIPPING_LABEL[order.shippingMethod]}</td>
                       <td style={{ padding: '0.75rem 1rem' }}><StatusBadge status={order.status as OrderStatus} /></td>
                       <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
                         {new Date(order.createdAt).toLocaleDateString('es-AR')}

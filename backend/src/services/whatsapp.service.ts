@@ -67,34 +67,26 @@ export function linkPagoConfirmado(
   return waLink(resellerPhone, msg)
 }
 
-/** Admin despacha pedido → notifica al comprador con tracking */
+/** Admin despacha pedido → notifica a la revendedora (recibe ella el paquete de MBDA) */
 export function linkPedidoDespachado(
-  buyerPhone: string,
+  resellerPhone: string,
   opts: {
     orderNumber: string
     storeName: string
     trackingNumber: string
-    shippingMethod: string
   },
 ) {
-  const metodo = opts.shippingMethod === 'CORREO_ARGENTINO'
-    ? 'Correo Argentino'
-    : opts.shippingMethod === 'ANDREANI'
-    ? 'Andreani'
-    : 'Retiro local'
   const msg = [
-    `📦 *Tu pedido fue despachado!*`,
+    `📦 *Despachamos tu pedido!*`,
     ``,
     `Pedido: ${opts.orderNumber}`,
     `Tienda: ${opts.storeName}`,
     ``,
-    `Envío: ${metodo}`,
     `Número de seguimiento: *${opts.trackingNumber}*`,
     ``,
-    `Podés rastrear tu envío con ese número en el sitio de ${metodo}.`,
     `Ante cualquier consulta, respondé este mensaje.`,
   ].join('\n')
-  return waLink(buyerPhone, msg)
+  return waLink(resellerPhone, msg)
 }
 
 /** Admin rechaza comprobante de pago → notifica al revendedor */

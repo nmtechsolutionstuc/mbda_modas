@@ -1,28 +1,29 @@
 import { Request, Response } from 'express'
-import { z } from 'zod'
-import { ok, created, notFound } from '../utils/apiResponse'
+import { ok, notFound } from '../utils/apiResponse'
 import { asyncHandler } from '../utils/asyncHandler'
 import { prisma } from '../config/prisma'
-import { lazyExpireOrders, createPublicOrder } from '../services/order.service'
-import { getZipnovaQuotes, isZipnovaConfigured } from '../services/shipping.service'
+import { lazyExpireOrders } from '../services/order.service'
 
-// ── Catálogo público del revendedor ───────────────────────────────────────────
+// ── Tienda pública de una revendedora (/tienda/:slug) ─────────────────────────
 
-export const getPublicCatalog = asyncHandler(async (req: Request, res: Response) => {
-  const { refCode } = req.params
+export const getPublicStore = asyncHandler(async (req: Request, res: Response) => {
+  const { slug } = req.params
 
   await lazyExpireOrders()
 
   const reseller = await prisma.reseller.findFirst({
-    where: { referralCode: refCode, isActive: true },
+    where: { storeSlug: slug, isActive: true },
     select: {
-      id: true, storeName: true, storePhoto: true, referralCode: true, whatsapp: true,
+      id: true, storeName: true, storePhoto: true, storeBio: true, referralCode: true, storeSlug: true,
+      whatsapp: true, city: true, level: true, storeTheme: true,
     },
   })
-  if (!reseller) return notFound(res, 'Catálogo no encontrado')
+  if (!reseller) return notFound(res, 'Tienda no encontrada')
+
+  const config = await prisma.config.findFirst({ select: { cbu: true, alias: true, outfitBuilderEnabled: true } })
 
   const items = await prisma.catalogItem.findMany({
-    where: { resellerId: reseller.id, product: { isActive: true } },
+    where: { resellerId: reseller.id, visible: true, product: { isActive: true } },
     include: {
       product: {
         include: {
@@ -34,10 +35,8 @@ export const getPublicCatalog = asyncHandler(async (req: Request, res: Response)
     orderBy: { createdAt: 'desc' },
   })
 
-  // Agrupar categorías únicas del catálogo
   const categoryMap = new Map<string, { id: string; name: string }>()
   items.forEach(i => categoryMap.set(i.product.category.id, i.product.category))
-  const categories = Array.from(categoryMap.values())
 
   const products = items.map(item => ({
     catalogItemId: item.id,
@@ -45,108 +44,57 @@ export const getPublicCatalog = asyncHandler(async (req: Request, res: Response)
     name:          item.product.name,
     description:   item.product.description,
     photos:        item.product.photos,
+    youtubeVideoUrl: item.product.youtubeVideoUrl,
     sellingPrice:  Number(item.sellingPrice),
     category:      item.product.category,
     variants:      item.product.variants,
-    // Dimensiones para cálculo de envío (null si no fueron cargadas)
-    weightGrams: item.product.weightGrams ?? null,
-    dimH:        item.product.dimH != null ? Number(item.product.dimH) : null,
-    dimW:        item.product.dimW != null ? Number(item.product.dimW) : null,
-    dimL:        item.product.dimL != null ? Number(item.product.dimL) : null,
   }))
-
-  ok(res, { reseller, products, categories })
-})
-
-export const getPublicProduct = asyncHandler(async (req: Request, res: Response) => {
-  const { refCode, productId } = req.params
-
-  const reseller = await prisma.reseller.findFirst({
-    where: { referralCode: refCode, isActive: true },
-    select: { id: true, storeName: true, storePhoto: true, referralCode: true, whatsapp: true },
-  })
-  if (!reseller) return notFound(res, 'Catálogo no encontrado')
-
-  const catalogItem = await prisma.catalogItem.findFirst({
-    where: { resellerId: reseller.id, productId },
-    include: {
-      product: {
-        include: {
-          category: { select: { id: true, name: true } },
-          variants: { select: { id: true, size: true, color: true, stock: true } },
-        },
-      },
-    },
-  })
-  if (!catalogItem || !catalogItem.product.isActive) return notFound(res, 'Producto no encontrado')
 
   ok(res, {
     reseller,
-    product: {
-      catalogItemId: catalogItem.id,
-      productId:     catalogItem.product.id,
-      name:          catalogItem.product.name,
-      description:   catalogItem.product.description,
-      photos:        catalogItem.product.photos,
-      sellingPrice:  Number(catalogItem.sellingPrice),
-      category:      catalogItem.product.category,
-      variants:      catalogItem.product.variants,
-      weightGrams:   catalogItem.product.weightGrams ?? null,
-      dimH:          catalogItem.product.dimH != null ? Number(catalogItem.product.dimH) : null,
-      dimW:          catalogItem.product.dimW != null ? Number(catalogItem.product.dimW) : null,
-      dimL:          catalogItem.product.dimL != null ? Number(catalogItem.product.dimL) : null,
-    },
+    products,
+    categories: Array.from(categoryMap.values()),
+    payment: { cbu: config?.cbu ?? '', alias: config?.alias ?? '' },
+    outfitBuilderEnabled: config?.outfitBuilderEnabled ?? true,
   })
 })
 
-// ── Crear pedido ──────────────────────────────────────────────────────────────
+// ── Productos destacados (para la sección "Colección" de la home) ────────────
+// Del catálogo general de MBDA, no de la tienda de una revendedora puntual.
 
-export const createOrder = asyncHandler(async (req: Request, res: Response) => {
-  const schema = z.object({
-    refCode:           z.string().length(6),
-    buyerName:         z.string().min(2).max(80),
-    buyerWhatsapp:     z.string().regex(/^\d{10,15}$/),
-    buyerEmail:        z.string().email().optional().or(z.literal('')),
-    shippingMethod:    z.enum(['CORREO_ARGENTINO', 'ANDREANI', 'LOCAL_PICKUP', 'OTHER_CARRIER']),
-    shippingAddress:   z.string().max(200).optional(),
-    shippingCity:      z.string().max(80).optional(),
-    shippingProvince:  z.string().max(80).optional(),
-    shippingZip:       z.string().max(20).optional(),
-    shippingCost:      z.coerce.number().nonnegative().optional(),
-    shippingQuoteData: z.string().max(1000).optional(),  // JSON snapshot del quote seleccionado
-    buyerNote:         z.string().max(500).optional(),   // Nota libre del comprador
-    items:             z.array(z.object({
-      variantId: z.string().uuid(),
-      quantity:  z.number().int().min(1).max(99),
-    })).min(1),
-  })
-
-  const data = schema.parse(req.body)
-  const { order, config } = await createPublicOrder({
-    ...data,
-    buyerEmail:        data.buyerEmail || undefined,
-    shippingCost:      data.shippingCost,
-    shippingQuoteData: data.shippingQuoteData,
-    buyerNote:         data.buyerNote || undefined,
-  })
-
-  created(res, {
-    order: {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      buyerName: order.buyerName,
-      total: order.total,
-      status: order.status,
-      reservedUntil: order.reservedUntil,
-      items: order.items,
+export const getFeaturedProducts = asyncHandler(async (_req: Request, res: Response) => {
+  const products = await prisma.product.findMany({
+    where: { isActive: true, availableForResellers: true, photos: { isEmpty: false } },
+    select: {
+      id: true, name: true, basePrice: true, photos: true,
+      category: { select: { name: true } },
     },
-    payment: {
-      cbu: config.cbu,
-      alias: config.alias,
-      whatsapp: config.whatsapp,
-      dispatchDays: config.dispatchDays,
-    },
+    orderBy: { createdAt: 'desc' },
+    take: 8,
   })
+  ok(res, products.map(p => ({ ...p, basePrice: Number(p.basePrice) })))
+})
+
+// ── Testimonios activos (sección "Voces de la comunidad" de la home) ─────────
+
+export const getPublicTestimonials = asyncHandler(async (_req: Request, res: Response) => {
+  const testimonials = await prisma.testimonial.findMany({
+    where: { isActive: true },
+    select: { id: true, quote: true, name: true, city: true },
+    orderBy: { order: 'asc' },
+  })
+  ok(res, testimonials)
+})
+
+// ── Preguntas frecuentes activas (sección "Preguntas" de la home) ────────────
+
+export const getPublicFaq = asyncHandler(async (_req: Request, res: Response) => {
+  const faqs = await prisma.faqItem.findMany({
+    where: { isActive: true },
+    select: { id: true, question: true, answer: true },
+    orderBy: { order: 'asc' },
+  })
+  ok(res, faqs)
 })
 
 // ── Config pública ────────────────────────────────────────────────────────────
@@ -155,18 +103,10 @@ export const getPublicConfig = asyncHandler(async (_req: Request, res: Response)
   const config = await prisma.config.findFirst({
     select: {
       cbu: true, alias: true, whatsapp: true, dispatchDays: true,
-      maxCashDeliveryDays: true, shippingEnabled: true, helpUrl: true,
-      // Defaults para cálculo de envío cuando el producto no tiene medidas propias
-      defaultWeightGrams: true,
-      defaultDimH: true, defaultDimW: true, defaultDimL: true,
+      maxCashDeliveryDays: true, helpUrl: true,
     },
   })
-  ok(res, config ? {
-    ...config,
-    defaultDimH: config.defaultDimH != null ? Number(config.defaultDimH) : null,
-    defaultDimW: config.defaultDimW != null ? Number(config.defaultDimW) : null,
-    defaultDimL: config.defaultDimL != null ? Number(config.defaultDimL) : null,
-  } : config)
+  ok(res, config)
 })
 
 // ── Términos y Condiciones públicos ───────────────────────────────────────────
@@ -181,109 +121,34 @@ export const getPublicTerms = asyncHandler(async (_req: Request, res: Response) 
   })
 })
 
-// ── Cotización de envío via Zipnova ───────────────────────────────────────────
-
-const SHIPPING_FALLBACK = {
-  quotes:  [] as unknown[],
-  message: 'El costo de envío no pudo calcularse en este momento. Te lo informaremos por WhatsApp antes de confirmar tu pedido.',
-}
-
-export const getShippingCost = asyncHandler(async (req: Request, res: Response) => {
-  const schema = z.object({
-    zipDestino:    z.string().min(4).max(8),
-    weightGrams:   z.coerce.number().int().positive(),
-    declaredValue: z.coerce.number().nonnegative().optional(),
-    city:          z.string().max(80).optional(),
-    state:         z.string().max(80).optional(),
-    dimH:          z.coerce.number().positive().optional(),
-    dimW:          z.coerce.number().positive().optional(),
-    dimL:          z.coerce.number().positive().optional(),
+export const getPublicPrivacyPolicy = asyncHandler(async (_req: Request, res: Response) => {
+  const config = await prisma.config.findFirst({
+    select: { privacyPolicyContent: true, privacyPolicyUpdatedAt: true },
   })
-
-  const { zipDestino, weightGrams, declaredValue, city, state, dimH, dimW, dimL } = schema.parse(req.query)
-
-  if (!isZipnovaConfigured()) {
-    return ok(res, SHIPPING_FALLBACK)
-  }
-
-  try {
-    const quotes = await getZipnovaQuotes({ zipDestino, weightGrams, declaredValue, city, state, dimH, dimW, dimL })
-
-    // Aplicar descuento según tipo de entrega (domicilio vs sucursal)
-    const config = await prisma.config.findFirst({
-      select: { zipnovaDiscountPctHome: true, zipnovaDiscountPctBranch: true },
-    })
-    const discountHome   = config ? Number(config.zipnovaDiscountPctHome)   : 0
-    const discountBranch = config ? Number(config.zipnovaDiscountPctBranch) : 0
-
-    const adjustedQuotes = quotes.map(q => {
-      const pct = q.serviceType === 'pickup_point' ? discountBranch : discountHome
-      return pct > 0 ? { ...q, cost: Math.round(q.cost * (1 - pct / 100)) } : q
-    })
-
-    return ok(res, { quotes: adjustedQuotes })
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error Zipnova'
-    console.error('[shipping] Zipnova quote error:', msg)
-    return ok(res, SHIPPING_FALLBACK)
-  }
+  ok(res, {
+    content: config?.privacyPolicyContent ?? null,
+    updatedAt: config?.privacyPolicyUpdatedAt ?? null,
+  })
 })
 
-// ── Feed público "Prendas en Promo" ────────────────────────────────────────────
-
-export const getPublicFeed = asyncHandler(async (_req: Request, res: Response) => {
+export const getPublicChangePolicy = asyncHandler(async (_req: Request, res: Response) => {
   const config = await prisma.config.findFirst({
-    select: { feedEnabled: true, feedSectionName: true, feedMaxItems: true, whatsapp: true },
+    select: { changePolicyContent: true, changePolicyUpdatedAt: true },
   })
+  ok(res, {
+    content: config?.changePolicyContent ?? null,
+    updatedAt: config?.changePolicyUpdatedAt ?? null,
+  })
+})
 
-  if (!config?.feedEnabled) {
-    return ok(res, { enabled: false, sectionName: config?.feedSectionName ?? 'Prendas en Promo', mbdaWhatsapp: '', items: [] })
-  }
-
-  const maxItems = config.feedMaxItems
-
-  const [mbdaProducts, externalListings] = await Promise.all([
-    prisma.product.findMany({
-      where: { showInFeed: true, isActive: true },
-      include: { variants: { select: { stock: true } } },
-      orderBy: { updatedAt: 'desc' },
-      take: maxItems,
-    }),
-    prisma.userListing.findMany({
-      where: { status: 'APPROVED', sold: false },
-      include: { reseller: { select: { storeName: true, whatsapp: true } } },
-      orderBy: { updatedAt: 'desc' },
-      take: maxItems,
-    }),
-  ])
-
-  const mbdaItems = mbdaProducts.map(p => ({
-    type: 'MBDA' as const,
-    id: p.id,
-    productId: p.id,
-    name: p.name,
-    price: Number(p.basePrice),
-    photos: p.photos.slice(0, 2),
-    inStock: p.variants.some(v => v.stock > 0),
-    updatedAt: p.updatedAt,
-  }))
-
-  const externalItems = externalListings.map(l => ({
-    type: 'EXTERNAL' as const,
-    id: l.id,
-    name: l.name,
-    price: Number(l.price),
-    photos: l.photos.slice(0, 2),
-    storeName: l.reseller.storeName,
-    whatsapp: l.reseller.whatsapp,
-    updatedAt: l.updatedAt,
-  }))
-
-  const items = [...mbdaItems, ...externalItems]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, maxItems)
-
-  ok(res, { enabled: true, sectionName: config.feedSectionName, mbdaWhatsapp: config.whatsapp, items })
+export const getPublicWithdrawalRight = asyncHandler(async (_req: Request, res: Response) => {
+  const config = await prisma.config.findFirst({
+    select: { withdrawalRightContent: true, withdrawalRightUpdatedAt: true },
+  })
+  ok(res, {
+    content: config?.withdrawalRightContent ?? null,
+    updatedAt: config?.withdrawalRightUpdatedAt ?? null,
+  })
 })
 
 // ── Landing page content ──────────────────────────────────────────────────────
@@ -297,6 +162,14 @@ export const getLandingContent = asyncHandler(async (_req: Request, res: Respons
       landingStep1Title: true, landingStep1Desc: true,
       landingStep2Title: true, landingStep2Desc: true,
       landingStep3Title: true, landingStep3Desc: true,
+      landingHeroImage: true, landingHeroVideo: true, landingAboutText: true, landingManifesto: true,
+      landingFeaturesImage: true, landingStep1Video: true, landingStep2Video: true, landingStep3Video: true,
+      landingBenefit1Title: true, landingBenefit1Desc: true,
+      landingBenefit2Title: true, landingBenefit2Desc: true,
+      landingBenefit3Title: true, landingBenefit3Desc: true,
+      landingBenefit4Title: true, landingBenefit4Desc: true,
+      landingShowBenefits: true, landingShowProcess: true, landingShowCollection: true,
+      landingShowResellerStory: true, landingShowTestimonials: true, landingShowFaq: true,
     },
   })
   ok(res, config)

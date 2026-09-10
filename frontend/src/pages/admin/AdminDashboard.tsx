@@ -1,63 +1,97 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router'
 import { useAuthStore } from '../../store/authStore'
-import { getDashboardStats, type DashboardStats } from '../../api/admin'
-import { isAdminLike } from '../../types'
+import { getDashboardStats, getAdminOrders, type DashboardStats, type Order } from '../../api/admin'
 
 interface MenuItem { title: string; desc: string; icon: string; href: string; active: boolean; adminOnly?: boolean; phase?: string }
 
 const MENU: MenuItem[] = [
   { title: 'Productos', desc: 'Creá y gestioná el catálogo de MBDA', icon: '👗', href: '/admin/productos', active: true },
   { title: 'Retiros', desc: 'Pedidos listos para retirar en el local', icon: '🏷️', href: '/admin/retiros', active: true },
-  { title: 'Prendas del feed', desc: 'Aprobar o rechazar prendas de tiendas externas', icon: '🌟', href: '/admin/prendas-feed', active: true },
-  { title: 'Configuración', desc: 'CBU, alias, WhatsApp, pedidos', icon: '⚙️', href: '/admin/configuracion', active: true, adminOnly: true },
-  { title: 'Landing Page', desc: 'Editá el contenido de la página de inicio', icon: '🖋️', href: '/admin/landing', active: true, adminOnly: true },
+  { title: 'Ciclos de compra', desc: 'Cierres, despachos y pedidos agrupados por ciclo', icon: '🔁', href: '/admin/ciclos', active: true },
   { title: 'Pedidos', desc: 'Confirmá pagos y despachá pedidos', icon: '📦', href: '/admin/pedidos', active: true, adminOnly: true },
   { title: 'Revendedores', desc: 'Gestioná cuentas de revendedores', icon: '👥', href: '/admin/revendedores', active: true, adminOnly: true },
+  { title: 'Cursos', desc: 'Videos de capacitación para revendedoras', icon: '🎓', href: '/admin/cursos', active: true },
+  { title: 'Configuración', desc: 'CBU, alias, WhatsApp, plazos y legales', icon: '⚙️', href: '/admin/configuracion', active: true, adminOnly: true },
+  { title: 'Landing Page', desc: 'Editá el contenido de la página de inicio', icon: '🖋️', href: '/admin/landing', active: true, adminOnly: true },
   { title: 'Subadmins', desc: 'Gestioná usuarios con acceso a productos', icon: '🔑', href: '/admin/subadmins', active: true, adminOnly: true },
-  { title: 'Vales', desc: 'Vales de cambio por prendas no disponibles', icon: '🎟️', href: '/admin/vales', active: true, adminOnly: true },
 ]
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Pendiente', PROOF_RECEIVED: 'Comprobante enviado', CONFIRMED: 'En preparación', DISPATCHED: 'Entregado', CANCELLED: 'Cancelado',
+}
+const ORDER_STATUS_COLOR: Record<string, string> = {
+  PENDING: '#f59e0b', PROOF_RECEIVED: '#3b82f6', CONFIRMED: '#10b981', DISPATCHED: '#6366f1', CANCELLED: '#ef4444',
+}
 
 export function AdminDashboard() {
   const { user } = useAuthStore()
   const isSubAdmin = user?.role === 'SUBADMIN'
-  const name = user && isAdminLike(user) ? user.name : 'Admin'
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [recentOrders, setRecentOrders] = useState<Order[]>([])
 
   useEffect(() => {
     if (!isSubAdmin) {
       getDashboardStats().then(setStats).catch(() => null)
+      getAdminOrders({ limit: 5 }).then(r => setRecentOrders(r.orders)).catch(() => null)
     }
   }, [isSubAdmin])
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: '2rem' }}>
-          <p style={{ fontSize: '0.875rem', color: '#b8922a', fontWeight: 600, marginBottom: '0.25rem' }}>Panel de administración</p>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '2rem', fontWeight: 700, color: '#111' }}>
-            Bienvenido, {name}
+        <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: 700, color: '#111' }}>
+            Resumen general
           </h1>
+          <span style={{ fontSize: '0.8125rem', color: '#6b7280', border: '1px solid #e0dbd0', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', background: '#fff' }}>
+            Este mes ▾
+          </span>
         </div>
 
         {/* Stats */}
         {stats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
             {[
-              { label: 'Productos activos', value: stats.activeProducts, sub: `${stats.totalProducts} total`, highlight: false },
-              { label: 'Categorías', value: stats.totalCategories, sub: 'activas', highlight: false },
-              { label: 'Revendedores activos', value: stats.activeResellers, sub: `${stats.totalResellers} registrados`, highlight: false },
-              { label: 'Pedidos pendientes', value: stats.pendingOrders, sub: 'esperan confirmación', highlight: stats.pendingOrders > 0 },
-              { label: 'Comisiones pendientes', value: `$${Number(stats.pendingCommissionsAmount).toLocaleString('es-AR', { minimumFractionDigits: 0 })}`, sub: 'por pagar a revendedores', highlight: false },
+              { label: 'Revendedoras', value: stats.activeResellers },
+              { label: 'Ventas totales', value: `$${stats.totalSalesAmount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` },
+              { label: 'Pedidos', value: stats.totalOrders },
             ].map(s => (
-              <div key={s.label} style={{ borderRadius: '1rem', padding: '1.25rem', border: `1px solid ${s.highlight ? '#fcd34d' : '#e0dbd0'}`, background: s.highlight ? '#fffbeb' : '#fff' }}>
-                <p style={{ fontSize: typeof s.value === 'number' ? '1.875rem' : '1.375rem', fontWeight: 700, color: s.highlight ? '#d97706' : '#b8922a', lineHeight: 1 }}>{s.value}</p>
-                <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#111', marginTop: '0.25rem' }}>{s.label}</p>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>{s.sub}</p>
+              <div key={s.label} style={{ borderRadius: '1rem', padding: '1.25rem', border: '1px solid #e0dbd0', background: '#fff' }}>
+                <p style={{ fontSize: '1.75rem', fontWeight: 700, color: '#111', lineHeight: 1 }}>{s.value}</p>
+                <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#6b7280', marginTop: '0.375rem' }}>{s.label}</p>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Últimos pedidos */}
+        {!isSubAdmin && (
+          <div style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e0dbd0', overflow: 'hidden', marginBottom: '2rem' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e0dbd0' }}>
+              <p style={{ fontWeight: 700, color: '#111', fontSize: '0.9375rem' }}>Últimos pedidos</p>
+            </div>
+            {recentOrders.length === 0 ? (
+              <p style={{ padding: '1.5rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.875rem' }}>Sin pedidos todavía</p>
+            ) : (
+              <div>
+                {recentOrders.map(o => (
+                  <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.75rem 1.25rem', borderBottom: '1px solid #f5f3ef', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.8125rem', color: '#6b7280', width: '60px' }}>#{o.orderNumber.replace('ORD-', '')}</span>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#111', flex: 1 }}>{o.reseller.storeName}</span>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111' }}>${Number(o.total).toLocaleString('es-AR')}</span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', background: ORDER_STATUS_COLOR[o.status] + '18', color: ORDER_STATUS_COLOR[o.status] }}>
+                      {ORDER_STATUS_LABEL[o.status]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ padding: '0.875rem 1.25rem' }}>
+              <Link to="/admin/pedidos" style={{ fontSize: '0.8125rem', color: '#C4693F', fontWeight: 600, textDecoration: 'none' }}>Ver todos los pedidos →</Link>
+            </div>
           </div>
         )}
 

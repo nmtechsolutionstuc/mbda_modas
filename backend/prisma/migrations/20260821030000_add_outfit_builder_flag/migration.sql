@@ -1,0 +1,1 @@
+ALTER TABLE "config" ADD COLUMN IF NOT EXISTS "outfitBuilderEnabled" BOOLEAN NOT NULL DEFAULT true;

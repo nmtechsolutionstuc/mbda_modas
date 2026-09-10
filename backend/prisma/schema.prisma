@@ -26,13 +26,6 @@ enum OrderStatus {
   CANCELLED
 }
 
-enum ShippingMethod {
-  CORREO_ARGENTINO
-  ANDREANI
-  LOCAL_PICKUP
-  OTHER_CARRIER
-}
-
 enum SaleMode {
   PRESENCIAL
   ONLINE
@@ -48,27 +41,59 @@ enum PaymentMethod {
   CASH
 }
 
-enum ListingStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
 enum CommissionStatus {
   PENDING
   PAID
   CANCELLED
 }
 
-enum VoucherStatus {
-  ACTIVE
-  USED
-  CANCELLED
+// SALE = comisión normal de la venta. BONUS = extra que MBDA suma de su propio
+// margen cuando la facturación del revendedor en el ciclo supera un umbral
+// (CycleBonusTier) — no sale del precio que la revendedora le puso al producto.
+enum CommissionKind {
+  SALE
+  BONUS
 }
 
 enum AdminRole {
   ADMIN
   SUBADMIN
+}
+
+enum ResellerLevel {
+  INICIAL
+  BRONCE
+  PLATA
+  ORO
+}
+
+enum CycleStatus {
+  OPEN
+  CLOSED
+  PREPARING
+  DISPATCHED
+}
+
+enum StoreTheme {
+  ELEGANTE
+  VARONIL
+  NARANJA
+  ROSA
+  MINIMAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Cómo recibe la revendedora la mercadería del ciclo cerrado. Solo aplica
+// cuando no es de Concepción: ahí siempre retira en el local sin importar
+// este valor (se ignora). Fuera de Concepción, ella elige una de las dos.
+enum DeliveryMethod {
+  PICKUP
+  SHIPPING
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -96,15 +121,31 @@ model Reseller {
   id              String    @id @default(uuid())
   firstName       String
   lastName        String
+  dni             String?
   whatsapp        String
   email           String    @unique
   passwordHash    String
   cbu             String?
   alias           String?
   storeName       String
+  storeSlug       String    @unique
   storePhoto      String?
+  storeBio        String?   // frase corta que la revendedora elige para el hero de su tienda pública
+  address         String?
+  city            String?
+  postalCode      String?
+  // Solo tiene efecto si la revendedora NO es de Concepción — ahí siempre
+  // retira en el local. Fuera de Concepción, ella elige retiro o despacho.
+  deliveryMethod  DeliveryMethod @default(SHIPPING)
+  level           ResellerLevel @default(INICIAL)
+  storeTheme      StoreTheme @default(ELEGANTE) // paleta de colores + tipografía de la tienda pública
+  lifetimeRevenue Decimal   @default(0) @db.Decimal(14, 2) // facturación acumulada histórica — nunca baja, define el nivel
   referralCode    String    @unique
   isActive        Boolean   @default(true)
+  // Autoregistro queda PENDING hasta que el admin lo apruebe; alta manual desde
+  // el admin nace APPROVED directamente. isActive sigue controlando activar/
+  // desactivar una cuenta YA aprobada — son ejes independientes.
+  approvalStatus  ApprovalStatus @default(APPROVED)
   termsAcceptedAt DateTime
   onboardingSeenAt DateTime? // null = todavía no vio la pantalla de bienvenida
   createdAt       DateTime  @default(now())
@@ -114,10 +155,26 @@ model Reseller {
   catalogItems  CatalogItem[]
   orders        Order[]
   commissions   Commission[]
-  userListings  UserListing[]
 
   @@index([referralCode])
+  @@index([storeSlug])
   @@map("resellers")
+}
+
+// ─────────────────────────────────────────────────────────────
+// LEVEL CONFIG — Umbral, comisión y tope de aumento por nivel de revendedora.
+// Fila fija por nivel (una por cada valor del enum ResellerLevel), editable
+// desde admin. Los valores de prueba iniciales son los del prompt maestro.
+// ─────────────────────────────────────────────────────────────
+
+model LevelConfig {
+  level           ResellerLevel @id
+  thresholdAmount Decimal       @db.Decimal(14, 2) // facturación acumulada para alcanzar este nivel
+  commissionPct   Decimal       @db.Decimal(5, 2)  // comisión cuando el revendedor vende al precio oficial
+  maxMarkupPct    Decimal       @db.Decimal(5, 2)  // tope máximo de aumento sobre el precio oficial
+  updatedAt       DateTime      @updatedAt
+
+  @@map("level_configs")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -164,17 +221,13 @@ model Product {
   description   String?
   basePrice     Decimal     @db.Decimal(12, 2)
   photos        String[]
+  youtubeVideoUrl String?   // video de YouTube que se embebe en el detalle de la prenda
   categoryId    String
   category      Category    @relation(fields: [categoryId], references: [id])
   commissionPct Decimal     @db.Decimal(5, 2) @default(20)
-  weightGrams   Int?
-  dimH          Decimal?    @db.Decimal(6, 2)
-  dimW          Decimal?    @db.Decimal(6, 2)
-  dimL          Decimal?    @db.Decimal(6, 2)
   kind          ProductKind @default(PHYSICAL)
   ownerId       String?     // Referencia interna opcional (admin)
   isActive      Boolean     @default(true)
-  showInFeed            Boolean @default(false) // aparece en la vitrina pública "Prendas en Promo"
   availableForResellers Boolean @default(true)  // los revendedores pueden agregarla a su catálogo
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -220,6 +273,7 @@ model CatalogItem {
   product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   sellingPrice Decimal  @db.Decimal(12, 2)
   saleMode     SaleMode @default(ONLINE)
+  visible      Boolean  @default(true) // la revendedora puede ocultarlo de su tienda sin quitarlo del catálogo
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -230,26 +284,22 @@ model CatalogItem {
 }
 
 // ─────────────────────────────────────────────────────────────
-// USER LISTING — Prenda propia de un usuario/tienda externa en el feed
-// "Prendas en Promo". Venta directa por WhatsApp, no la revende nadie más.
+// CYCLE — Ciclo de compra: agrupa los pedidos confirmados entre un cierre y
+// el siguiente. Admin define cuándo cierra y cuándo se despacha.
 // ─────────────────────────────────────────────────────────────
 
-model UserListing {
-  id          String        @id @default(uuid())
-  resellerId  String
-  reseller    Reseller      @relation(fields: [resellerId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  price       Decimal       @db.Decimal(12, 2)
-  photos      String[]      // máx 2, validado en el backend
-  status      ListingStatus @default(PENDING)
-  sold        Boolean       @default(false)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+model Cycle {
+  id         String      @id @default(uuid())
+  number     Int         @unique @default(autoincrement()) // "Ciclo #42" — solo para mostrar
+  closeAt    DateTime
+  dispatchAt DateTime
+  status     CycleStatus @default(OPEN)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
-  @@index([resellerId])
-  @@index([status])
-  @@map("user_listings")
+  orders Order[]
+
+  @@map("cycles")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -264,21 +314,14 @@ model Order {
   buyerName        String
   buyerWhatsapp    String
   buyerEmail       String?
-  shippingMethod   ShippingMethod
-  shippingAddress  String?
-  shippingCity     String?
-  shippingProvince String?
-  shippingZip      String?
-  shippingCost      Decimal?       @db.Decimal(10, 2)
-  shippingQuoteData String?        @db.Text  // JSON snapshot del quote Zipnova seleccionado
-  zipnovaShipmentId Int?                     // ID del envío creado en Zipnova (al generar etiqueta)
   buyerNote         String?        @db.Text  // Nota libre del comprador (referencia, aclaraciones, etc.)
-  trackingNumber    String?
-  shippingLabel     String?
+  trackingNumber    String?                   // referencia opcional al despachar a la dirección del revendedor
   pickupBy          PickupBy       @default(BUYER)   // quién retira en el local: el comprador o el revendedor
   paymentMethod     PaymentMethod?                    // cómo pagó el comprador (flujo de reserva del revendedor)
   cashDueDate       DateTime?                         // fecha tope de entrega/cobro cuando paymentMethod=CASH
   pickupDeadline    DateTime?                         // vencimiento del retiro en el local (seteado al confirmar)
+  cycleId           String?                           // ciclo de compra al que pertenece (asignado al confirmar)
+  cycle             Cycle?         @relation(fields: [cycleId], references: [id])
   subtotal         Decimal        @db.Decimal(12, 2)
   total            Decimal        @db.Decimal(12, 2)
   status           OrderStatus    @default(PENDING)
@@ -292,6 +335,7 @@ model Order {
 
   @@index([resellerId])
   @@index([status])
+  @@index([cycleId])
   @@map("orders")
 }
 
@@ -333,6 +377,7 @@ model Commission {
   orderId    String
   order      Order            @relation(fields: [orderId], references: [id])
   amount     Decimal          @db.Decimal(12, 2)
+  kind       CommissionKind   @default(SALE)
   status     CommissionStatus @default(PENDING)
   paidAt     DateTime?
   createdAt  DateTime         @default(now())
@@ -344,26 +389,23 @@ model Commission {
 }
 
 // ─────────────────────────────────────────────────────────────
-// VOUCHER — Vale de cambio, personal e intransferible, sin vencimiento
+// CYCLE BONUS TIER — Recompensa extra por volumen de ventas DENTRO de un
+// mismo ciclo de compra (se reinicia cada ciclo). A partir de thresholdAmount
+// de facturación en el ciclo, MBDA suma bonusPct de su propio margen sobre el
+// precio base de cada venta — no achica ni depende de lo que la revendedora
+// haya puesto como precio de venta. Editable desde admin, cantidad de filas
+// libre (no es un enum fijo como los niveles).
 // ─────────────────────────────────────────────────────────────
 
-model Voucher {
-  id                 String        @id @default(uuid())
-  buyerName          String
-  buyerWhatsapp      String
-  amount             Decimal       @db.Decimal(12, 2)
-  status             VoucherStatus @default(ACTIVE)
-  note               String?       @db.Text
-  relatedOrderNumber String?
-  createdByAdminId   String
-  createdByAdminName String
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  usedAt             DateTime?
-  cancelledAt        DateTime?
+model CycleBonusTier {
+  id              String   @id @default(uuid())
+  thresholdAmount Decimal  @db.Decimal(12, 2)
+  bonusPct        Decimal  @db.Decimal(5, 2)
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@index([buyerWhatsapp])
-  @@map("vouchers")
+  @@map("cycle_bonus_tiers")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -385,6 +427,48 @@ model ConfigAuditLog {
 }
 
 // ─────────────────────────────────────────────────────────────
+// RESELLER AUDIT LOG — Cambios sensibles hechos por el admin sobre la
+// cuenta de una revendedora (CBU/alias propios, DNI, dirección) — mismo
+// patrón que ConfigAuditLog pero por revendedora.
+// ─────────────────────────────────────────────────────────────
+
+model ResellerAuditLog {
+  id           String   @id @default(uuid())
+  resellerId   String
+  resellerName String
+  adminId      String
+  adminName    String
+  field        String   // 'cbu' | 'alias' | 'dni' | 'address' | 'city' | 'postalCode'
+  oldValue     String   // enmascarado si aplica
+  newValue     String   // enmascarado si aplica
+  ip           String?
+  createdAt    DateTime @default(now())
+
+  @@index([resellerId])
+  @@index([field])
+  @@map("reseller_audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// COURSE VIDEO — Videos de YouTube de capacitación para revendedoras, se
+// cargan progresivamente desde el admin. No públicos: solo visibles para
+// revendedoras logueadas en su panel ("Cursos").
+// ─────────────────────────────────────────────────────────────
+
+model CourseVideo {
+  id          String   @id @default(uuid())
+  title       String
+  youtubeUrl  String
+  description String?  @db.Text
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("course_videos")
+}
+
+// ─────────────────────────────────────────────────────────────
 // CONFIG — Registro único (singleton) de configuración global
 // ─────────────────────────────────────────────────────────────
 
@@ -396,27 +480,25 @@ model Config {
   dispatchDays         Int       @default(3)
   stockReserveHours    Int       @default(24)
   maxCashDeliveryDays  Int       @default(2)
-  shippingEnabled      Boolean   @default(false)
   pickupExpiryHours    Int       @default(48)
 
-  // ── Feed "Prendas en Promo" ─────────────────────────────────
-  feedEnabled          Boolean   @default(true)
-  feedSectionName      String    @default("Prendas en Promo")
-  feedMaxItems         Int       @default(20)
-  feedMaxPerReseller   Int       @default(3)
-  autoApproveListings  Boolean   @default(false)
+  // ── Armador de outfits (no generativo, V1) ──────────────────
+  outfitBuilderEnabled Boolean   @default(true)
+
+  // ── Límite de revendedoras por ciudad (off por defecto) ─────
+  cityResellerLimitEnabled Boolean @default(false)
+  cityResellerLimitCount   Int     @default(5)
 
   // ── Ayuda ────────────────────────────────────────────────────
   helpUrl              String    @default("")
-  defaultWeightGrams   Int?
-  defaultDimH          Decimal?  @db.Decimal(6, 2)
-  defaultDimW          Decimal?  @db.Decimal(6, 2)
-  defaultDimL          Decimal?  @db.Decimal(6, 2)
-  defaultCommissionPct Decimal?  @db.Decimal(5, 2)
-  zipnovaDiscountPctHome   Decimal   @default(0) @db.Decimal(5, 2)
-  zipnovaDiscountPctBranch Decimal   @default(0) @db.Decimal(5, 2)
   termsContent         String?   @db.Text
   termsUpdatedAt       DateTime?
+  privacyPolicyContent   String?   @db.Text
+  privacyPolicyUpdatedAt DateTime?
+  changePolicyContent    String?   @db.Text
+  changePolicyUpdatedAt  DateTime?
+  withdrawalRightContent   String?   @db.Text
+  withdrawalRightUpdatedAt DateTime?
 
   // ── Landing page (editable desde admin) ───────────────────
   landingHeroTitle    String @default("Tu tienda, tus precios")
@@ -432,7 +514,69 @@ model Config {
   landingStep3Title   String @default("Compartí y vendé")
   landingStep3Desc    String @default("Compartí tu link único y recibí pedidos.")
 
+  // ── Landing — rediseño "fashion premium" (imagen + secciones extra) ──
+  landingHeroImage    String?
+  landingHeroVideo    String? // URL de video de fondo del hero (mp4). Si está, reemplaza a landingHeroImage.
+  landingAboutText    String @default("Creamos una forma simple de emprender: vos elegís qué vender y a qué precio, MBDA se encarga del stock. Sin locales, sin inversión, sin vueltas.")
+  landingManifesto    String @default("Creá tu emprendimiento de moda sin invertir un peso. Elegís los productos, ponés tu precio, nosotros nos ocupamos del resto.")
+  landingFeaturesImage String? // imagen de fondo fija de la sección "Cómo funciona"
+  landingStep1Video   String? // video de la card del paso 1 (reemplaza al ícono)
+  landingStep2Video   String?
+  landingStep3Video   String?
+
+  // ── Landing — Beneficios (4 ítems editables desde admin) ────
+  landingBenefit1Title String @default("Precios mayoristas")
+  landingBenefit1Desc  String @default("Accedé al catálogo de MBDA al precio de fábrica y definí vos cuánto ganás en cada venta.")
+  landingBenefit2Title String @default("Catálogo siempre actualizado")
+  landingBenefit2Desc  String @default("Nuevos productos y colecciones disponibles para sumar a tu selección cuando quieras.")
+  landingBenefit3Title String @default("Pedidos simples y directos")
+  landingBenefit3Desc  String @default("Cargás la reserva, MBDA confirma el pago y se encarga de tenerlo listo para tu clienta.")
+  landingBenefit4Title String @default("Acompañamiento real")
+  landingBenefit4Desc  String @default("No estás sola: hay soporte para resolver dudas en cada paso de tu emprendimiento.")
+
+  // ── Landing — mostrar/ocultar secciones de la Home (todas visibles por defecto) ──
+  landingShowBenefits      Boolean @default(true)
+  landingShowProcess       Boolean @default(true)
+  landingShowCollection    Boolean @default(true)
+  landingShowResellerStory Boolean @default(true)
+  landingShowTestimonials  Boolean @default(true)
+  landingShowFaq           Boolean @default(true)
+
   updatedAt DateTime @updatedAt
 
   @@map("config")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TESTIMONIAL — Testimonio de revendedora mostrado en la Home pública.
+// Contenido gestionado por admin (reemplaza a los ítems demo hardcodeados).
+// ─────────────────────────────────────────────────────────────
+
+model Testimonial {
+  id        String   @id @default(uuid())
+  quote     String   @db.Text
+  name      String
+  city      String
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("testimonials")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FAQ ITEM — Pregunta frecuente mostrada en la Home pública.
+// ─────────────────────────────────────────────────────────────
+
+model FaqItem {
+  id        String   @id @default(uuid())
+  question  String
+  answer    String   @db.Text
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("faq_items")
 }

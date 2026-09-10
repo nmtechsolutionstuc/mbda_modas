@@ -19,15 +19,24 @@ export async function resellerLogin(email: string, password: string): Promise<Au
 export interface RegisterPayload {
   firstName: string
   lastName: string
+  dni: string
   email: string
   password: string
   whatsapp: string
   storeName: string
+  address: string
+  city: string
+  postalCode: string
   acceptTerms: true
 }
 
-export async function resellerRegister(payload: RegisterPayload): Promise<AuthResult> {
-  const { data } = await axiosClient.post<{ success: true; data: AuthResult }>('/auth/reseller/register', payload)
+export interface PendingRegistration {
+  pending: true
+  message: string
+}
+
+export async function resellerRegister(payload: RegisterPayload): Promise<PendingRegistration> {
+  const { data } = await axiosClient.post<{ success: true; data: PendingRegistration }>('/auth/reseller/register', payload)
   return data.data
 }
 

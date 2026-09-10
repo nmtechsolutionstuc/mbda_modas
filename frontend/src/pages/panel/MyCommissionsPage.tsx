@@ -70,14 +70,14 @@ export function MyCommissionsPage() {
   const summary     = data?.summary ?? { pending: 0, paid: 0 }
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto' }}>
 
         <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-          <Link to="/panel" style={{ color: '#b8922a', textDecoration: 'none' }}>Mi panel</Link> / Mis comisiones
+          <Link to="/panel" style={{ color: 'var(--c-accent)', textDecoration: 'none' }}>Mi panel</Link> / Mis comisiones
         </p>
 
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.875rem', fontWeight: 700, color: '#111', marginBottom: '1.5rem' }}>
+        <h1 style={{ fontFamily: "var(--f-display)", fontSize: '1.875rem', fontWeight: 700, color: '#111', marginBottom: '1.5rem' }}>
           Mis comisiones
         </h1>
 
@@ -86,7 +86,7 @@ export function MyCommissionsPage() {
           {[
             { label: 'Pendiente de cobro', value: fmt(summary.pending), color: '#f59e0b', icon: '⏳' },
             { label: 'Total cobrado', value: fmt(summary.paid), color: '#10b981', icon: '✅' },
-            { label: 'Total ganado', value: fmt(summary.pending + summary.paid), color: '#b8922a', icon: '💰' },
+            { label: 'Total ganado', value: fmt(summary.pending + summary.paid), color: 'var(--c-accent)', icon: '💰' },
           ].map(s => (
             <div key={s.label} style={{ background: '#fff', borderRadius: '1rem', padding: '1.25rem', border: '1px solid #e0dbd0' }}>
               <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{s.icon}</div>
@@ -105,8 +105,8 @@ export function MyCommissionsPage() {
           ].map(f => (
             <button key={f.value} onClick={() => handleFilter(f.value)} style={{
               padding: '0.375rem 0.875rem', borderRadius: '99px', border: '1px solid',
-              borderColor: statusFilter === f.value ? '#b8922a' : '#e0dbd0',
-              background: statusFilter === f.value ? '#b8922a' : '#fff',
+              borderColor: statusFilter === f.value ? 'var(--c-accent)' : '#e0dbd0',
+              background: statusFilter === f.value ? 'var(--c-accent)' : '#fff',
               color: statusFilter === f.value ? '#fff' : '#6b7280',
               fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer',
             }}>
@@ -144,7 +144,7 @@ export function MyCommissionsPage() {
                 <tbody>
                   {commissions.map(c => (
                     <tr key={c.id} style={{ borderBottom: '1px solid #f5f3ef' }}>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#b8922a' }}>{c.order.orderNumber}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--c-accent)' }}>{c.order.orderNumber}</td>
                       <td style={{ padding: '0.75rem 1rem' }}>{c.order.buyerName}</td>
                       <td style={{ padding: '0.75rem 1rem', fontWeight: 700 }}>{fmt(c.amount)}</td>
                       <td style={{ padding: '0.75rem 1rem' }}>

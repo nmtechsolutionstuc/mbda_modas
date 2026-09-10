@@ -2,8 +2,9 @@ import { useState, useRef } from 'react'
 import { Link } from 'react-router'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../../context/ToastContext'
-import { isReseller } from '../../types'
+import { isReseller, type StoreTheme } from '../../types'
 import { updateProfile } from '../../api/reseller'
+import { STORE_THEMES, STORE_THEME_ORDER } from '../../theme/storeThemes'
 
 const API_BASE = import.meta.env.VITE_API_URL?.replace('/api/v1', '') ?? 'http://localhost:3000'
 
@@ -45,11 +46,20 @@ export function MyProfilePage() {
 
   const reseller = user && isReseller(user) ? user : null
 
-  const [storeName, setStoreName] = useState(reseller?.storeName ?? '')
-  const [whatsapp, setWhatsapp]   = useState(reseller?.whatsapp ?? '')
-  const [cbu, setCbu]             = useState(reseller?.cbu ?? '')
-  const [alias, setAlias]         = useState(reseller?.alias ?? '')
-  const [saving, setSaving]       = useState(false)
+  const [storeName, setStoreName]   = useState(reseller?.storeName ?? '')
+  const [storeBio, setStoreBio]     = useState(reseller?.storeBio ?? '')
+  const [whatsapp, setWhatsapp]     = useState(reseller?.whatsapp ?? '')
+  const [cbu, setCbu]               = useState(reseller?.cbu ?? '')
+  const [alias, setAlias]           = useState(reseller?.alias ?? '')
+  const [address, setAddress]       = useState(reseller?.address ?? '')
+  const [city, setCity]             = useState(reseller?.city ?? '')
+  const [postalCode, setPostalCode] = useState(reseller?.postalCode ?? '')
+  const [storeTheme, setStoreTheme] = useState<StoreTheme>(reseller?.storeTheme ?? 'ELEGANTE')
+  const [deliveryMethod, setDeliveryMethod] = useState<'PICKUP' | 'SHIPPING'>(reseller?.deliveryMethod ?? 'SHIPPING')
+  const [saving, setSaving]         = useState(false)
+
+  const normalizedCity = city.trim().toLowerCase()
+  const isConcepcion = normalizedCity === 'concepción' || normalizedCity === 'concepcion'
 
   // Foto
   const [photoFile, setPhotoFile] = useState<File | null>(null)
@@ -73,10 +83,16 @@ export function MyProfilePage() {
     setSaving(true)
     try {
       const fd = new FormData()
-      if (storeName !== reseller?.storeName) fd.append('storeName', storeName)
-      if (whatsapp !== reseller?.whatsapp)   fd.append('whatsapp', whatsapp)
-      if (cbu !== (reseller?.cbu ?? ''))     fd.append('cbu', cbu)
-      if (alias !== (reseller?.alias ?? '')) fd.append('alias', alias)
+      if (storeName !== reseller?.storeName)     fd.append('storeName', storeName)
+      if (storeBio !== (reseller?.storeBio ?? '')) fd.append('storeBio', storeBio)
+      if (whatsapp !== reseller?.whatsapp)       fd.append('whatsapp', whatsapp)
+      if (cbu !== (reseller?.cbu ?? ''))         fd.append('cbu', cbu)
+      if (alias !== (reseller?.alias ?? ''))     fd.append('alias', alias)
+      if (address !== (reseller?.address ?? '')) fd.append('address', address)
+      if (city !== (reseller?.city ?? ''))       fd.append('city', city)
+      if (postalCode !== (reseller?.postalCode ?? '')) fd.append('postalCode', postalCode)
+      if (storeTheme !== reseller?.storeTheme) fd.append('storeTheme', storeTheme)
+      if (deliveryMethod !== reseller?.deliveryMethod) fd.append('deliveryMethod', deliveryMethod)
       if (photoFile) fd.append('storePhoto', photoFile)
 
       const updated = await updateProfile(fd)
@@ -86,8 +102,14 @@ export function MyProfilePage() {
         setUser({
           ...user,
           storeName: updated.storeName,
+          storeBio: updated.storeBio,
           whatsapp: updated.whatsapp,
           storePhoto: updated.storePhoto,
+          address: updated.address,
+          city: updated.city,
+          postalCode: updated.postalCode,
+          deliveryMethod: updated.deliveryMethod,
+          storeTheme: updated.storeTheme,
         })
       }
 
@@ -104,7 +126,7 @@ export function MyProfilePage() {
   if (!reseller) return null
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f3ef', padding: '2rem 1.5rem' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto' }}>
 
         {/* Breadcrumb */}
@@ -156,6 +178,50 @@ export function MyProfilePage() {
             </div>
           </div>
 
+          {/* ── Estilo de tienda ── */}
+          <div style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e0dbd0', overflow: 'hidden' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e0dbd0', background: '#faf9f6' }}>
+              <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.1rem', fontWeight: 700, color: '#111', margin: 0 }}>
+                Estilo de tienda
+              </h2>
+            </div>
+            <div style={{ padding: '1.25rem' }}>
+              <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: '0 0 1rem' }}>
+                Elegí la paleta de colores y la tipografía de tu tienda pública.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem' }}>
+                {STORE_THEME_ORDER.map(key => {
+                  const t = STORE_THEMES[key]
+                  const active = storeTheme === key
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setStoreTheme(key)}
+                      style={{
+                        textAlign: 'left', padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer',
+                        border: active ? `2px solid ${t.colors.accent}` : '1.5px solid #e0dbd0',
+                        background: active ? t.colors.soft : '#fff',
+                      }}
+                    >
+                      <div style={{
+                        height: '2.25rem', borderRadius: '0.5rem', marginBottom: '0.625rem',
+                        background: `linear-gradient(100deg, ${t.colors.bannerFrom} 0%, ${t.colors.bannerTo} 100%)`,
+                        border: `1px solid ${t.colors.line}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 0.5rem',
+                      }}>
+                        <span style={{ width: '1rem', height: '1rem', borderRadius: '99px', background: t.colors.accent }} />
+                      </div>
+                      <p style={{ fontFamily: t.fonts.display, fontSize: '1.0625rem', color: t.colors.ink, margin: '0 0 0.15rem' }}>Aa</p>
+                      <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#111', margin: 0 }}>{t.label}</p>
+                      <p style={{ fontSize: '0.6875rem', color: '#9ca3af', margin: '0.15rem 0 0' }}>{t.desc}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
           {/* ── Datos de la tienda ── */}
           <div style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e0dbd0', overflow: 'hidden' }}>
             <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e0dbd0', background: '#faf9f6' }}>
@@ -167,6 +233,19 @@ export function MyProfilePage() {
               <div>
                 <label style={LABEL}>Nombre de la tienda *</label>
                 <input value={storeName} onChange={e => setStoreName(e.target.value)} style={INP} required />
+              </div>
+              <div>
+                <label style={LABEL}>Frase de tu tienda</label>
+                <textarea
+                  value={storeBio}
+                  onChange={e => setStoreBio(e.target.value.slice(0, 200))}
+                  style={{ ...INP, minHeight: '60px', resize: 'vertical' }}
+                  placeholder="Ej: Moda que te acompaña todos los días."
+                  maxLength={200}
+                />
+                <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                  Se muestra debajo del nombre en tu tienda pública. {storeBio.length}/200
+                </p>
               </div>
               <div>
                 <label style={LABEL}>WhatsApp (con código de país)</label>
@@ -200,6 +279,63 @@ export function MyProfilePage() {
             </div>
           </div>
 
+          {/* ── Dirección para despacho ── */}
+          <div style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e0dbd0', overflow: 'hidden' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e0dbd0', background: '#faf9f6' }}>
+              <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.1rem', fontWeight: 700, color: '#111', margin: 0 }}>
+                📍 Dirección
+              </h2>
+            </div>
+            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: 0 }}>
+                Se usa para despachar tus pedidos si no sos de Concepción.
+              </p>
+              <div>
+                <label style={LABEL}>Dirección</label>
+                <input value={address} onChange={e => setAddress(e.target.value)} style={INP} placeholder="Av. Siempre Viva 742" />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={LABEL}>Ciudad</label>
+                  <input value={city} onChange={e => setCity(e.target.value)} style={INP} placeholder="Concepción" />
+                </div>
+                <div>
+                  <label style={LABEL}>Código postal</label>
+                  <input value={postalCode} onChange={e => setPostalCode(e.target.value)} style={INP} placeholder="4111" />
+                </div>
+              </div>
+
+              {isConcepcion ? (
+                <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: 0 }}>
+                  Al ser de Concepción, siempre retirás los pedidos confirmados en el local.
+                </p>
+              ) : (
+                <div>
+                  <label style={LABEL}>¿Cómo preferís recibir tus pedidos?</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {([
+                      { key: 'SHIPPING', label: 'Que me lo envíen' },
+                      { key: 'PICKUP', label: 'Prefiero retirarlo yo' },
+                    ] as { key: 'PICKUP' | 'SHIPPING'; label: string }[]).map(o => (
+                      <button
+                        key={o.key}
+                        type="button"
+                        onClick={() => setDeliveryMethod(o.key)}
+                        style={{
+                          flex: 1, padding: '0.55rem', borderRadius: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
+                          border: deliveryMethod === o.key ? '2px solid var(--c-accent)' : '1.5px solid #e0dbd0',
+                          background: deliveryMethod === o.key ? '#faf5eb' : '#fff', color: deliveryMethod === o.key ? 'var(--c-accent)' : '#6b7280',
+                        }}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* ── Datos de cuenta (solo lectura) ── */}
           <div style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e0dbd0', overflow: 'hidden' }}>
             <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e0dbd0', background: '#faf9f6' }}>
@@ -212,7 +348,10 @@ export function MyProfilePage() {
                 <ReadOnly label="Nombre" value={reseller.firstName} />
                 <ReadOnly label="Apellido" value={reseller.lastName} />
               </div>
-              <ReadOnly label="Email" value={reseller.email} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <ReadOnly label="Email" value={reseller.email} />
+                <ReadOnly label="DNI" value={reseller.dni ?? '—'} />
+              </div>
 
               {/* Código de referido destacado */}
               <div>
@@ -224,8 +363,8 @@ export function MyProfilePage() {
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/catalogo?ref=${reseller.referralCode}`)
-                        .then(() => showToast('Link copiado al portapapeles', 'success'))
+                      navigator.clipboard.writeText(`${window.location.origin}/tienda/${reseller.storeSlug}`)
+                        .then(() => showToast('Link de tu tienda copiado', 'success'))
                     }}
                     style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem', borderRadius: '0.375rem', border: '1px solid #e0dbd0', background: '#fff', cursor: 'pointer', fontWeight: 600, color: '#111' }}
                   >

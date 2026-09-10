@@ -1,5 +1,10 @@
 import { prisma } from '../config/prisma'
 import { calcularComision } from '../utils/commission'
+import { applyRevenueAndRecalculateLevel } from './level.service'
+import { getOpenCycle } from './cycle.service'
+import { getBonusPctForTotal } from './bonusTier.service'
+
+const PAID_STATUSES = ['CONFIRMED', 'DISPATCHED'] as const
 
 // Nunca incluir el reseller completo (expondría passwordHash) — solo los campos
 // que consumen los controllers/frontend para mostrar datos de contacto/cobro.
@@ -36,143 +41,6 @@ export async function lazyExpireOrders() {
       })
     })
   }
-}
-
-// ── Crear pedido público ──────────────────────────────────────────────────────
-
-export interface CartItem {
-  variantId: string
-  quantity: number
-}
-
-export interface CreateOrderInput {
-  refCode:           string
-  buyerName:         string
-  buyerWhatsapp:     string
-  buyerEmail?:       string
-  shippingMethod:    'CORREO_ARGENTINO' | 'ANDREANI' | 'LOCAL_PICKUP' | 'OTHER_CARRIER'
-  shippingAddress?:  string
-  shippingCity?:     string
-  shippingProvince?: string
-  shippingZip?:      string
-  shippingCost?:     number
-  shippingQuoteData?: string  // JSON snapshot del quote Zipnova seleccionado
-  buyerNote?:        string   // Nota libre del comprador
-  items:             CartItem[]
-}
-
-export async function createPublicOrder(input: CreateOrderInput) {
-  // Lazy expire antes de reservar
-  await lazyExpireOrders()
-
-  const reseller = await prisma.reseller.findFirst({
-    where: { referralCode: input.refCode, isActive: true },
-  })
-  if (!reseller) throw Object.assign(new Error('Revendedor no encontrado'), { status: 404 })
-
-  const config = await prisma.config.findFirst()
-  if (!config) throw Object.assign(new Error('Configuración no encontrada'), { status: 500 })
-
-  // Generar orderNumber único
-  let orderNumber = generateOrderNumber()
-  let attempts = 0
-  while (await prisma.order.findUnique({ where: { orderNumber } }) && attempts < 20) {
-    orderNumber = generateOrderNumber()
-    attempts++
-  }
-
-  const reservedUntil = new Date(Date.now() + config.stockReserveHours * 60 * 60 * 1000)
-
-  return await prisma.$transaction(async tx => {
-    let subtotal = 0
-    const orderItemsData: {
-      variantId: string
-      productId: string
-      productName: string
-      size: string
-      color: string
-      quantity: number
-      unitPrice: number
-      basePrice: number
-      commissionPct: number
-      subtotal: number
-    }[] = []
-
-    for (const cartItem of input.items) {
-      const variant = await tx.productVariant.findUnique({
-        where: { id: cartItem.variantId },
-        include: { product: true },
-      })
-      if (!variant) throw Object.assign(new Error(`Variante ${cartItem.variantId} no encontrada`), { status: 404 })
-      if (variant.stock < cartItem.quantity) {
-        throw Object.assign(
-          new Error(`Stock insuficiente para ${variant.product.name} (${variant.size}/${variant.color})`),
-          { status: 409 },
-        )
-      }
-
-      // Obtener precio del catálogo del revendedor (checkout clásico, no distingue modo de venta)
-      const catalogItem = await tx.catalogItem.findFirst({
-        where: { resellerId: reseller.id, productId: variant.productId },
-      })
-      if (!catalogItem) {
-        throw Object.assign(new Error(`${variant.product.name} no está en el catálogo de este revendedor`), { status: 404 })
-      }
-
-      const unitPrice = Number(catalogItem.sellingPrice)
-      const lineSubtotal = unitPrice * cartItem.quantity
-      subtotal += lineSubtotal
-
-      // Reservar stock
-      await tx.productVariant.update({
-        where: { id: cartItem.variantId },
-        data: { stock: { decrement: cartItem.quantity } },
-      })
-
-      orderItemsData.push({
-        variantId: cartItem.variantId,
-        productId: variant.productId,
-        productName: variant.product.name,
-        size: variant.size,
-        color: variant.color,
-        quantity: cartItem.quantity,
-        unitPrice,
-        basePrice: Number(variant.product.basePrice),
-        commissionPct: Number(variant.product.commissionPct),
-        subtotal: lineSubtotal,
-      })
-    }
-
-    const shippingCost = input.shippingCost ?? 0
-    const order = await tx.order.create({
-      data: {
-        orderNumber,
-        resellerId:        reseller.id,
-        buyerName:         input.buyerName,
-        buyerWhatsapp:     input.buyerWhatsapp,
-        buyerEmail:        input.buyerEmail,
-        shippingMethod:    input.shippingMethod,
-        shippingAddress:   input.shippingAddress,
-        shippingCity:      input.shippingCity,
-        shippingProvince:  input.shippingProvince,
-        shippingZip:       input.shippingZip,
-        shippingCost:      shippingCost > 0 ? shippingCost : null,
-        shippingQuoteData: input.shippingQuoteData ?? null,
-        buyerNote:         input.buyerNote ?? null,
-        subtotal,
-        total: subtotal + shippingCost,
-        status:        'PENDING',
-        reservedUntil,
-        items: { create: orderItemsData },
-      },
-      include: {
-        items: true,
-        reseller: { select: { storeName: true, whatsapp: true } },
-      },
-    })
-
-    return { order, config }
-  })
 }
 
 // ── Admin: gestión de pedidos ────────────────────────────────────────────────
@@ -218,9 +86,20 @@ export async function getOrder(orderId: string) {
   return order
 }
 
+/**
+ * Confirma el pago de un pedido — lo hace únicamente el admin, y significa lo
+ * mismo sea transferencia o efectivo: la plata ya está efectivamente en la
+ * cuenta o en la mano de MBDA. Acá se genera la comisión del revendedor.
+ *
+ * El efectivo NO se confirma por adelantado con una fecha futura — eso sería
+ * dar por pagado algo que todavía no pasó. Si la clienta va a pagar en
+ * efectivo más adelante, se usa `extendForCashPickup` para estirarle el plazo
+ * de la reserva; recién cuando el efectivo esté en mano se llama a esta
+ * función, igual que con una transferencia.
+ */
 export async function confirmOrder(
   orderId: string,
-  opts?: { paymentMethod?: 'TRANSFER' | 'CASH'; cashDueDate?: Date },
+  opts?: { paymentMethod?: 'TRANSFER' | 'CASH' },
 ) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -231,8 +110,15 @@ export async function confirmOrder(
     throw Object.assign(new Error('El pedido no se puede confirmar en su estado actual'), { status: 400 })
   }
 
+  const paymentMethod = opts?.paymentMethod ?? order.paymentMethod
+  if (!paymentMethod) {
+    throw Object.assign(new Error('Indicá cómo pagó: transferencia o efectivo'), { status: 400 })
+  }
+
   const config = await prisma.config.findFirst()
   const pickupDeadline = new Date(Date.now() + (config?.pickupExpiryHours ?? 48) * 60 * 60 * 1000)
+
+  const cycle = await getOpenCycle()
 
   return await prisma.$transaction(async tx => {
     await tx.order.update({
@@ -240,28 +126,97 @@ export async function confirmOrder(
       data: {
         status: 'CONFIRMED',
         pickupDeadline,
-        ...(opts?.paymentMethod && { paymentMethod: opts.paymentMethod }),
-        ...(opts?.cashDueDate && { cashDueDate: opts.cashDueDate }),
+        cycleId: cycle.id,
+        paymentMethod,
       },
     })
 
-    // Crear comisiones por cada ítem
-    const commissionsData = order.items
-      .filter(i => !i.cancelled)
-      .map(item => ({
+    // Crear comisiones por cada ítem. La comisión "caso A" (venta al precio
+    // oficial) sale del % que el admin cargó en el producto — los niveles de
+    // revendedora (LevelConfig) están armados pero no se aplican todavía.
+    const activeItems = order.items.filter(i => !i.cancelled)
+    const commissionsData: { resellerId: string; orderId: string; amount: number; kind?: 'SALE' | 'BONUS' }[] =
+      activeItems.map(item => ({
         resellerId: order.resellerId,
         orderId: order.id,
         amount: calcularComision(Number(item.unitPrice), Number(item.basePrice), Number(item.commissionPct)),
       }))
 
+    // Recompensa por volumen del ciclo: se suma aparte de la comisión de venta,
+    // sale del margen de MBDA (no del precio que la revendedora puso), y se
+    // calcula sobre la facturación acumulada del ciclo incluyendo este pedido —
+    // el pedido que cruza el umbral ya se beneficia del nuevo tramo.
+    const priorCycleTotal = await tx.order.aggregate({
+      where: {
+        resellerId: order.resellerId,
+        cycleId: cycle.id,
+        status: { in: ['CONFIRMED', 'DISPATCHED'] },
+        id: { not: order.id },
+      },
+      _sum: { total: true },
+    })
+    const cumulativeAfter = Number(priorCycleTotal._sum.total ?? 0) + Number(order.total)
+    const tiers = await tx.cycleBonusTier.findMany({ orderBy: { thresholdAmount: 'asc' } })
+    const bonusPct = getBonusPctForTotal(
+      tiers.map(t => ({ thresholdAmount: Number(t.thresholdAmount), bonusPct: Number(t.bonusPct) })),
+      cumulativeAfter,
+    )
+    if (bonusPct > 0) {
+      const orderBaseTotal = activeItems.reduce((sum, i) => sum + Number(i.basePrice) * i.quantity, 0)
+      const bonusAmount = parseFloat((orderBaseTotal * (bonusPct / 100)).toFixed(2))
+      if (bonusAmount > 0) {
+        commissionsData.push({ resellerId: order.resellerId, orderId: order.id, amount: bonusAmount, kind: 'BONUS' })
+      }
+    }
+
     if (commissionsData.length > 0) {
       await tx.commission.createMany({ data: commissionsData })
     }
+
+    // Facturación acumulada histórica del revendedor — puede hacerle subir de nivel
+    const activeTotal = order.items
+      .filter(i => !i.cancelled)
+      .reduce((sum, i) => sum + Number(i.subtotal), 0)
+    await applyRevenueAndRecalculateLevel(tx, order.resellerId, activeTotal)
 
     return tx.order.findUnique({
       where: { id: orderId },
       include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true, commissions: true },
     })
+  })
+}
+
+/**
+ * Le da más tiempo a un pedido pendiente para que la clienta pague en
+ * efectivo — NO confirma el pago ni genera comisión, solo estira
+ * `reservedUntil` (que es lo que ya usa `lazyExpireOrders` para cancelar y
+ * liberar el stock solo). Si nadie confirma el pago antes de esa fecha, el
+ * pedido se cancela igual que hoy se cancela una transferencia que nunca
+ * llegó — la extensión es sobre el plazo, no sobre el resultado.
+ */
+export async function extendForCashPickup(orderId: string, cashDueDate: Date) {
+  const order = await prisma.order.findUnique({ where: { id: orderId } })
+  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
+  if (order.status !== 'PENDING' && order.status !== 'PROOF_RECEIVED') {
+    throw Object.assign(new Error('Solo se puede extender un pedido pendiente'), { status: 400 })
+  }
+  if (cashDueDate.getTime() <= Date.now()) {
+    throw Object.assign(new Error('La fecha debe ser futura'), { status: 400 })
+  }
+
+  const config = await prisma.config.findFirst()
+  const maxDate = new Date(Date.now() + (config?.maxCashDeliveryDays ?? 2) * 24 * 60 * 60 * 1000)
+  if (cashDueDate > maxDate) {
+    throw Object.assign(
+      new Error(`La fecha no puede superar los ${config?.maxCashDeliveryDays ?? 2} días configurados`),
+      { status: 400 },
+    )
+  }
+
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { paymentMethod: 'CASH', cashDueDate, reservedUntil: cashDueDate },
+    include: { reseller: { select: SAFE_RESELLER_SELECT }, items: true },
   })
 }
 
@@ -397,30 +352,25 @@ export async function cancelOrder(orderId: string, cancelReason: string) {
 
 // ── Reserva iniciada por el revendedor (WhatsApp + reservar + marcar vendido) ──
 
-export interface CreateReservationInput {
+export interface ReservationItemInput {
   catalogItemId: string
   variantId:     string
   quantity:      number
-  buyerName:     string
-  buyerWhatsapp: string
 }
 
-/** El revendedor reserva un producto de su catálogo para un comprador con el que ya negoció por WhatsApp */
+export interface CreateReservationInput {
+  items:         ReservationItemInput[]
+  buyerName:     string
+  buyerWhatsapp: string
+  note?:         string
+}
+
+/** El revendedor reserva uno o más productos de su catálogo para un comprador con el que ya negoció por WhatsApp */
 export async function createReservation(resellerId: string, input: CreateReservationInput) {
   await lazyExpireOrders()
 
-  const catalogItem = await prisma.catalogItem.findFirst({
-    where: { id: input.catalogItemId, resellerId },
-    include: { product: true },
-  })
-  if (!catalogItem) throw Object.assign(new Error('Producto no encontrado en tu catálogo'), { status: 404 })
-
-  const variant = await prisma.productVariant.findFirst({
-    where: { id: input.variantId, productId: catalogItem.productId },
-  })
-  if (!variant) throw Object.assign(new Error('Variante no encontrada'), { status: 404 })
-  if (variant.stock < input.quantity) {
-    throw Object.assign(new Error(`Stock insuficiente (quedan ${variant.stock})`), { status: 409 })
+  if (input.items.length === 0) {
+    throw Object.assign(new Error('Agregá al menos un producto a la reserva'), { status: 400 })
   }
 
   const config = await prisma.config.findFirst()
@@ -434,15 +384,56 @@ export async function createReservation(resellerId: string, input: CreateReserva
   }
 
   const reservedUntil = new Date(Date.now() + config.stockReserveHours * 60 * 60 * 1000)
-  const unitPrice = Number(catalogItem.sellingPrice)
-  const subtotal = unitPrice * input.quantity
-  const pickupBy = catalogItem.saleMode === 'PRESENCIAL' ? 'BUYER' : 'RESELLER'
 
   return prisma.$transaction(async tx => {
-    await tx.productVariant.update({
-      where: { id: input.variantId },
-      data: { stock: { decrement: input.quantity } },
-    })
+    let subtotal = 0
+    let anyOnline = false
+    const orderItemsData: {
+      variantId: string; productId: string; productName: string; size: string; color: string
+      quantity: number; unitPrice: number; basePrice: number; commissionPct: number; subtotal: number
+    }[] = []
+
+    for (const reqItem of input.items) {
+      const catalogItem = await tx.catalogItem.findFirst({
+        where: { id: reqItem.catalogItemId, resellerId },
+        include: { product: true },
+      })
+      if (!catalogItem) throw Object.assign(new Error('Producto no encontrado en tu catálogo'), { status: 404 })
+
+      const variant = await tx.productVariant.findFirst({
+        where: { id: reqItem.variantId, productId: catalogItem.productId },
+      })
+      if (!variant) throw Object.assign(new Error('Variante no encontrada'), { status: 404 })
+      if (variant.stock < reqItem.quantity) {
+        throw Object.assign(new Error(`Stock insuficiente para ${catalogItem.product.name} (quedan ${variant.stock})`), { status: 409 })
+      }
+      if (catalogItem.saleMode === 'ONLINE') anyOnline = true
+
+      await tx.productVariant.update({
+        where: { id: reqItem.variantId },
+        data: { stock: { decrement: reqItem.quantity } },
+      })
+
+      const unitPrice = Number(catalogItem.sellingPrice)
+      const lineSubtotal = unitPrice * reqItem.quantity
+      subtotal += lineSubtotal
+
+      orderItemsData.push({
+        variantId:     reqItem.variantId,
+        productId:     variant.productId,
+        productName:   catalogItem.product.name,
+        size:          variant.size,
+        color:         variant.color,
+        quantity:      reqItem.quantity,
+        unitPrice,
+        basePrice:     Number(catalogItem.product.basePrice),
+        commissionPct: Number(catalogItem.product.commissionPct),
+        subtotal:      lineSubtotal,
+      })
+    }
+
+    // Si algún ítem es de venta online, retira la revendedora; si todos son presenciales, retira el comprador
+    const pickupBy = anyOnline ? 'RESELLER' : 'BUYER'
 
     const order = await tx.order.create({
       data: {
@@ -450,55 +441,19 @@ export async function createReservation(resellerId: string, input: CreateReserva
         resellerId,
         buyerName:     input.buyerName,
         buyerWhatsapp: input.buyerWhatsapp,
-        shippingMethod: 'LOCAL_PICKUP',
+        buyerNote:     input.note ?? null,
         pickupBy,
         subtotal,
         total: subtotal,
         status: 'PENDING',
         reservedUntil,
-        items: {
-          create: [{
-            variantId:     input.variantId,
-            productId:     variant.productId,
-            productName:   catalogItem.product.name,
-            size:          variant.size,
-            color:         variant.color,
-            quantity:      input.quantity,
-            unitPrice,
-            basePrice:     Number(catalogItem.product.basePrice),
-            commissionPct: Number(catalogItem.product.commissionPct),
-            subtotal,
-          }],
-        },
+        items: { create: orderItemsData },
       },
       include: { items: true },
     })
 
     return { order, config }
   })
-}
-
-/** El revendedor confirma que cobró y marca la reserva como vendida (genera la comisión) */
-export async function resellerMarkSold(
-  resellerId: string,
-  orderId: string,
-  opts: { paymentMethod: 'TRANSFER' | 'CASH'; cashDueDate?: Date },
-) {
-  const order = await prisma.order.findFirst({ where: { id: orderId, resellerId } })
-  if (!order) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 })
-
-  if (opts.paymentMethod === 'CASH') {
-    const config = await prisma.config.findFirst()
-    const maxDate = new Date(Date.now() + (config?.maxCashDeliveryDays ?? 2) * 24 * 60 * 60 * 1000)
-    if (!opts.cashDueDate || opts.cashDueDate > maxDate) {
-      throw Object.assign(
-        new Error(`La fecha de entrega no puede superar los ${config?.maxCashDeliveryDays ?? 2} días configurados por el admin`),
-        { status: 400 },
-      )
-    }
-  }
-
-  return confirmOrder(orderId, opts)
 }
 
 /** El revendedor cancela su propia reserva mientras esté pendiente de pago */
@@ -552,6 +507,83 @@ export async function getPendingPickups() {
     },
     orderBy: { pickupDeadline: 'asc' },
   })
+}
+
+// ── Ranking mensual (por facturación del mes en curso) ────────────────────────
+
+/**
+ * Ranking del mes en curso por facturación de pedidos confirmados/despachados.
+ * No expone el monto de otras revendedoras — solo posición, tienda y nivel.
+ */
+export async function getMonthlyRanking(resellerId: string) {
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const grouped = await prisma.order.groupBy({
+    by: ['resellerId'],
+    where: { status: { in: ['CONFIRMED', 'DISPATCHED'] }, createdAt: { gte: startOfMonth } },
+    _sum: { total: true },
+  })
+
+  const sorted = grouped
+    .map(g => ({ resellerId: g.resellerId, total: Number(g._sum.total ?? 0) }))
+    .sort((a, b) => b.total - a.total)
+
+  const resellers = await prisma.reseller.findMany({
+    where: { id: { in: sorted.map(s => s.resellerId) } },
+    select: { id: true, storeName: true, level: true },
+  })
+  const resellerMap = new Map(resellers.map(r => [r.id, r]))
+
+  const ranking = sorted.map((s, i) => ({
+    position: i + 1,
+    resellerId: s.resellerId,
+    storeName: resellerMap.get(s.resellerId)?.storeName ?? '—',
+    level: resellerMap.get(s.resellerId)?.level ?? 'INICIAL',
+  }))
+
+  const mine = ranking.find(r => r.resellerId === resellerId)
+
+  return {
+    top: ranking.slice(0, 20),
+    myPosition: mine?.position ?? null,
+    myTotal: sorted.find(s => s.resellerId === resellerId)?.total ?? 0,
+    totalParticipants: ranking.length,
+  }
+}
+
+/** Resumen para el "Inicio" del panel: ventas/pedidos del mes (con comparación al mes anterior), reservas activas y próximo cierre/despacho del ciclo abierto */
+export async function getResellerDashboardSummary(resellerId: string) {
+  const now = new Date()
+  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+
+  const [thisMonthAgg, lastMonthAgg, pendingReservations, cycle] = await Promise.all([
+    prisma.order.aggregate({
+      where: { resellerId, status: { in: [...PAID_STATUSES] }, createdAt: { gte: startOfThisMonth } },
+      _sum: { total: true },
+      _count: true,
+    }),
+    prisma.order.aggregate({
+      where: { resellerId, status: { in: [...PAID_STATUSES] }, createdAt: { gte: startOfLastMonth, lt: startOfThisMonth } },
+      _sum: { total: true },
+      _count: true,
+    }),
+    prisma.order.count({ where: { resellerId, status: 'PENDING' } }),
+    getOpenCycle(),
+  ])
+
+  return {
+    salesThisMonth: Number(thisMonthAgg._sum.total ?? 0),
+    salesLastMonth: Number(lastMonthAgg._sum.total ?? 0),
+    ordersThisMonth: thisMonthAgg._count,
+    ordersLastMonth: lastMonthAgg._count,
+    pendingReservations,
+    nextClose: cycle.closeAt,
+    nextDispatch: cycle.dispatchAt,
+    cycleStatus: cycle.status,
+    cycleNumber: cycle.number,
+  }
 }
 
 /** Marca el pedido como retirado en el local (reutiliza el estado DISPATCHED) */

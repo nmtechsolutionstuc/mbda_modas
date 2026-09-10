@@ -69,8 +69,9 @@ Al registrarte en la plataforma MBDA Revendedores y activar tu cuenta, declarás
 
 ---
 
-## 6. Fraude, Falsificación y Conductas Deshonestas
+## 6. Fraude, Falsificación, Seguridad Informática y Conductas Deshonestas
 
+### 6.1 Fraude y falsificación de comprobantes
 - Está **terminantemente prohibido** enviar, facilitar o utilizar comprobantes de pago alterados, falsificados, duplicados o pertenecientes a transferencias de terceros no relacionados con el pedido en cuestión.
 - Está prohibido intentar engañar a MBDA mediante cualquier medio, incluyendo pero no limitado a: capturas de pantalla modificadas, chats manipulados, recibos de pago inventados, presión indebida o información falsa.
 - Ante cualquier indicio de fraude o falsificación, MBDA procederá a:
@@ -79,6 +80,11 @@ Al registrarte en la plataforma MBDA Revendedores y activar tu cuenta, declarás
   - Denunciar el hecho ante las autoridades competentes (art. 172 y ss. del Código Penal Argentino — estafa; art. 292 y ss. — falsificación de documentos).
   - Reclamar los daños y perjuicios ocasionados por la vía civil y/o penal.
 - Esta cláusula aplica tanto al Revendedor directamente como a cualquier Comprador que actúe con su conocimiento o complicidad.
+
+### 6.2 Seguridad informática y uso indebido de la plataforma
+- Está **terminantemente prohibido**: intentar vulnerar o eludir las medidas de seguridad de la plataforma, explotar vulnerabilidades técnicas, realizar ataques de fuerza bruta sobre contraseñas, inyectar código malicioso, saturar el servicio (ataques de denegación de servicio), scrapear masivamente el catálogo con herramientas automatizadas, acceder o intentar acceder a cuentas ajenas o a información de otros revendedores sin autorización, o realizar ingeniería inversa sobre la plataforma.
+- Estas conductas pueden constituir delitos informáticos bajo la **Ley 26.388** (que incorporó al Código Penal Argentino los arts. **153 bis** — acceso indebido a un sistema informático, **157 bis** — acceso y revelación indebida de datos personales, y **183/184** — daño informático), y serán denunciadas penalmente además de habilitar la baja inmediata de la cuenta y el reclamo de los daños ocasionados.
+- Si detectás una vulnerabilidad de seguridad en la plataforma, te pedimos reportarla de inmediato por los canales oficiales de contacto de MBDA en lugar de explotarla, divulgarla públicamente o compartirla con terceros. La colaboración de buena fe en la corrección de fallas no genera sanción alguna.
 
 ---
 
@@ -116,6 +122,7 @@ Al registrarte en la plataforma MBDA Revendedores y activar tu cuenta, declarás
 - Las comisiones se transfieren al CBU/alias registrado en el perfil del Revendedor en la plataforma. **MBDA no se hace responsable de transferencias realizadas a datos bancarios incorrectos o desactualizados**. Es responsabilidad del Revendedor mantener sus datos de cobro vigentes.
 - MBDA puede retener comisiones de forma preventiva si existe una disputa, reclamo abierto, sospecha de fraude o deuda del Revendedor con MBDA.
 - Las comisiones son en pesos argentinos (ARS). Cualquier variación cambiaria o inflacionaria no da derecho a ajustes retroactivos.
+- MBDA puede ofrecer, a su exclusivo criterio, una recompensa adicional por volumen de ventas dentro de un mismo ciclo de compra, según tramos y porcentajes que MBDA define y puede modificar, suspender o discontinuar en cualquier momento sin previo aviso. Esta recompensa es un beneficio discrecional y no forma parte de la comisión base ni genera derechos adquiridos: un tramo vigente en un ciclo no garantiza que se mantenga en los ciclos siguientes.
 
 ---
 
@@ -125,6 +132,7 @@ Al registrarte en la plataforma MBDA Revendedores y activar tu cuenta, declarás
 - El Revendedor debe informar correctamente a sus Compradores sobre los productos, precios, plazos y condiciones de envío, sin inducir a error ni engaño.
 - El Revendedor se compromete a no dañar la reputación de MBDA Modas mediante comentarios falsos, difamatorios o tendenciosos en redes sociales, foros u otros medios.
 - Cualquier reclamo de un Comprador que derive en un perjuicio para MBDA (incluyendo reversiones de pago, demandas, publicidad negativa) será reclamado al Revendedor.
+- Esta asignación de responsabilidad rige exclusivamente en la relación interna entre MBDA y el Revendedor. Frente al Comprador, y sin perjuicio de lo aquí pactado, MBDA y el Revendedor pueden resultar solidariamente responsables conforme el art. 40 de la Ley 24.240 de Defensa del Consumidor. En ese caso, MBDA se reserva el derecho de repetir contra el Revendedor todo monto que haya debido afrontar por causas atribuibles a la gestión comercial de este último, conforme la Sección 15 (Indemnización).
 
 ---
 
@@ -189,11 +197,9 @@ El Revendedor se compromete a indemnizar, defender y eximir de responsabilidad a
 
 ---
 
-## 17. Política de Privacidad
+## 17. Protección de Datos Personales
 
-- Los datos personales que proporcionás al registrarte (nombre, email, WhatsApp, CBU) son utilizados exclusivamente para gestionar tu cuenta, procesar pedidos y realizar transferencias de comisiones.
-- MBDA no vende ni comparte tus datos personales con terceros, salvo obligación legal.
-- Tenés derecho de acceso, rectificación y supresión de tus datos conforme a la Ley 25.326 de Protección de Datos Personales de Argentina.
+El tratamiento de tus datos personales y los de tus Compradores se rige por nuestra **Política de Privacidad** (disponible en la sección "Privacidad" del pie de página de la plataforma), que forma parte integrante de estos Términos y Condiciones y detalla qué datos recolectamos, para qué los usamos, con quién los compartimos y cómo ejercer tus derechos conforme a la Ley 25.326 de Protección de Datos Personales de Argentina.
 
 ---
 

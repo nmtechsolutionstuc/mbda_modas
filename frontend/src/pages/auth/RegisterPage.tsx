@@ -4,16 +4,19 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from 'react-router'
 import { resellerRegister } from '../../api/auth'
-import { useAuthStore } from '../../store/authStore'
 
 const schema = z.object({
   firstName: z.string().min(1, 'El nombre es requerido'),
   lastName: z.string().min(1, 'El apellido es requerido'),
+  dni: z.string().min(6, 'DNI inválido'),
   email: z.string().email('Email inválido'),
   password: z.string().min(8, 'Mínimo 8 caracteres'),
   passwordConfirm: z.string().min(1, 'Confirmá tu contraseña'),
   whatsapp: z.string().min(8, 'Número inválido'),
   storeName: z.string().min(1, 'El nombre de tu tienda es requerido'),
+  address: z.string().min(3, 'La dirección es requerida'),
+  city: z.string().min(2, 'La ciudad es requerida'),
+  postalCode: z.string().min(3, 'El código postal es requerido'),
   acceptTerms: z.boolean().refine(v => v === true, 'Debés aceptar los Términos y Condiciones'),
 }).refine(d => d.password === d.passwordConfirm, {
   message: 'Las contraseñas no coinciden',
@@ -24,8 +27,8 @@ type FormData = z.infer<typeof schema>
 
 export function RegisterPage() {
   const navigate = useNavigate()
-  const { setAuth } = useAuthStore()
   const [serverError, setServerError] = useState<string | null>(null)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } =
     useForm<FormData>({ resolver: zodResolver(schema) })
@@ -36,14 +39,17 @@ export function RegisterPage() {
       const result = await resellerRegister({
         firstName: values.firstName,
         lastName: values.lastName,
+        dni: values.dni,
         email: values.email,
         password: values.password,
         whatsapp: values.whatsapp,
         storeName: values.storeName,
+        address: values.address,
+        city: values.city,
+        postalCode: values.postalCode,
         acceptTerms: true,
       })
-      setAuth(result.user, result.accessToken)
-      navigate('/panel', { replace: true })
+      setPendingMessage(result.message)
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
       const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
@@ -71,6 +77,26 @@ export function RegisterPage() {
   const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.3rem' }
   const labelStyle: React.CSSProperties = { fontSize: '0.8125rem', fontWeight: 600, color: '#1e1914' }
   const errStyle: React.CSSProperties = { fontSize: '0.775rem', color: '#dc2626' }
+
+  if (pendingMessage) {
+    return (
+      <div style={{ minHeight: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1.5rem', background: '#f5f3ef' }}>
+        <div style={{ width: '100%', maxWidth: '480px', background: '#fff', borderRadius: '1.25rem', padding: '2.25rem 1.75rem', border: '1px solid #e0dbd0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)', textAlign: 'center' }}>
+          <p style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🕒</p>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: 700, color: '#111', marginBottom: '0.75rem' }}>
+            Solicitud enviada
+          </h1>
+          <p style={{ color: '#6b7280', fontSize: '0.9375rem', marginBottom: '1.5rem' }}>{pendingMessage}</p>
+          <button
+            onClick={() => navigate('/login')}
+            style={{ padding: '0.75rem 1.5rem', borderRadius: '0.875rem', border: 'none', background: '#111', color: '#f5f3ef', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Volver al inicio
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ minHeight: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1.5rem', background: '#f5f3ef' }}>
@@ -102,6 +128,13 @@ export function RegisterPage() {
               </div>
             </div>
 
+            {/* DNI */}
+            <div style={fieldStyle}>
+              <label style={labelStyle}>DNI</label>
+              <input {...register('dni')} placeholder="30123456" style={inp} />
+              {errors.dni && <span style={errStyle}>{errors.dni.message}</span>}
+            </div>
+
             {/* Email */}
             <div style={fieldStyle}>
               <label style={labelStyle}>Email</label>
@@ -121,6 +154,27 @@ export function RegisterPage() {
               <label style={labelStyle}>Nombre de tu tienda</label>
               <input {...register('storeName')} placeholder="Lucía Moda" style={inp} />
               {errors.storeName && <span style={errStyle}>{errors.storeName.message}</span>}
+            </div>
+
+            {/* Dirección */}
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Dirección</label>
+              <input {...register('address')} placeholder="Av. Siempre Viva 742" style={inp} />
+              {errors.address && <span style={errStyle}>{errors.address.message}</span>}
+            </div>
+
+            {/* Ciudad y código postal */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div style={fieldStyle}>
+                <label style={labelStyle}>Ciudad</label>
+                <input {...register('city')} placeholder="Concepción" style={inp} />
+                {errors.city && <span style={errStyle}>{errors.city.message}</span>}
+              </div>
+              <div style={fieldStyle}>
+                <label style={labelStyle}>Código postal</label>
+                <input {...register('postalCode')} placeholder="4111" style={inp} />
+                {errors.postalCode && <span style={errStyle}>{errors.postalCode.message}</span>}
+              </div>
             </div>
 
             {/* Contraseña */}

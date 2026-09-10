@@ -15,10 +15,7 @@ export interface CreateProductInput {
   commissionPct: number
   categoryId: string
   kind?: 'PHYSICAL' | 'SERVICE' | 'DIGITAL'
-  weightGrams?: number
-  dimH?: number
-  dimW?: number
-  dimL?: number
+  youtubeVideoUrl?: string
   variants: VariantInput[]
   photos?: string[]
 }
@@ -30,13 +27,9 @@ export interface UpdateProductInput {
   commissionPct?: number
   categoryId?: string
   kind?: 'PHYSICAL' | 'SERVICE' | 'DIGITAL'
-  weightGrams?: number | null
-  dimH?: number | null
-  dimW?: number | null
-  dimL?: number | null
   isActive?: boolean
-  showInFeed?: boolean
   availableForResellers?: boolean
+  youtubeVideoUrl?: string | null
   variants?: VariantInput[]
   addPhotos?: string[]
   deletePhotos?: string[]
@@ -87,11 +80,8 @@ export async function createProduct(data: CreateProductInput) {
         commissionPct: data.commissionPct,
         categoryId:   data.categoryId,
         kind:         data.kind ?? 'PHYSICAL',
-        weightGrams:  data.weightGrams,
-        dimH:         data.dimH,
-        dimW:         data.dimW,
-        dimL:         data.dimL,
         photos:       data.photos ?? [],
+        youtubeVideoUrl: data.youtubeVideoUrl,
       },
     })
 
@@ -141,13 +131,9 @@ export async function updateProduct(id: string, data: UpdateProductInput) {
         ...(data.commissionPct !== undefined && { commissionPct: data.commissionPct }),
         ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
         ...(data.kind !== undefined && { kind: data.kind }),
-        ...(data.weightGrams !== undefined && { weightGrams: data.weightGrams }),
-        ...(data.dimH       !== undefined && { dimH: data.dimH }),
-        ...(data.dimW       !== undefined && { dimW: data.dimW }),
-        ...(data.dimL       !== undefined && { dimL: data.dimL }),
         ...(data.isActive   !== undefined && { isActive: data.isActive }),
-        ...(data.showInFeed !== undefined && { showInFeed: data.showInFeed }),
         ...(data.availableForResellers !== undefined && { availableForResellers: data.availableForResellers }),
+        ...(data.youtubeVideoUrl !== undefined && { youtubeVideoUrl: data.youtubeVideoUrl }),
         photos,
       },
     })
@@ -208,6 +194,18 @@ export async function deleteProduct(id: string) {
   const product = await prisma.product.findUnique({ where: { id } })
   if (!product) return null
 
+  // Si alguna variante del producto ya tiene pedidos asociados, la base de
+  // datos rechaza el delete en cascada (la FK de OrderItem → ProductVariant
+  // no permite borrarlo) — se detecta antes para devolver un error claro en
+  // vez de un 500 crudo, igual que con revendedores.
+  const orderedVariants = await prisma.orderItem.count({ where: { variant: { productId: id } } })
+  if (orderedVariants > 0) {
+    throw Object.assign(
+      new Error('No se puede eliminar: el producto tiene pedidos asociados. Desactivalo en su lugar.'),
+      { status: 400 },
+    )
+  }
+
   // Eliminar fotos del storage
   await Promise.all(product.photos.map(url => deletePhoto(url)))
 
@@ -245,4 +243,21 @@ export async function createCategory(data: { name: string; order?: number }) {
 
 export async function updateCategory(id: string, data: { name?: string; isActive?: boolean; order?: number }) {
   return prisma.category.update({ where: { id }, data })
+}
+
+export async function deleteCategory(id: string) {
+  const category = await prisma.category.findUnique({
+    where: { id },
+    include: { _count: { select: { products: true } } },
+  })
+  if (!category) return null
+
+  if (category._count.products > 0) {
+    throw Object.assign(
+      new Error('No se puede eliminar: tiene productos asociados. Desactivala o movelos a otra categoría primero.'),
+      { status: 400 },
+    )
+  }
+
+  return prisma.category.delete({ where: { id } })
 }

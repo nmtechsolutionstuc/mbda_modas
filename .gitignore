@@ -30,5 +30,8 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 
+# ── Claude Code (config local con permisos/tokens de sesión) ──
+.claude/settings.local.json
+
 # ── Uploads locales ───────────────────────────────────────────
 backend/public/uploads/

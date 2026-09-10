@@ -17,6 +17,11 @@ export function LoginPage() {
   const navigate = useNavigate()
   const { setAuth } = useAuthStore()
   const [serverError, setServerError] = useState<string | null>(null)
+  // Cada modo llama a un solo endpoint. Antes se probaba revendedor y, si
+  // fallaba, admin — dos intentos de login por click, que consumían el doble
+  // del límite de intentos (8 cada 15 min) compartido entre ambos endpoints.
+  // Con esto un error de tipeo gasta un solo intento.
+  const [mode, setMode] = useState<'reseller' | 'admin'>('reseller')
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } =
     useForm<FormData>({ resolver: zodResolver(schema) })
@@ -24,10 +29,11 @@ export function LoginPage() {
   async function onSubmit(values: FormData) {
     setServerError(null)
     try {
-      // Intentar login como revendedor primero
-      const result = await resellerLogin(values.email, values.password)
+      const result = mode === 'reseller'
+        ? await resellerLogin(values.email, values.password)
+        : await adminLogin(values.email, values.password)
       setAuth(result.user, result.accessToken)
-      navigate('/panel', { replace: true })
+      navigate(mode === 'reseller' ? '/panel' : '/admin', { replace: true })
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
 
@@ -35,21 +41,14 @@ export function LoginPage() {
         setServerError('Tu cuenta fue desactivada. Contactá al administrador.')
         return
       }
-
       if (status === 401) {
-        // Si falló como revendedor, intentar como admin
-        try {
-          const result = await adminLogin(values.email, values.password)
-          setAuth(result.user, result.accessToken)
-          navigate('/admin', { replace: true })
-          return
-        } catch {
-          // Falló como admin también
-        }
         setServerError('Email o contraseña incorrectos')
         return
       }
-
+      if (status === 429) {
+        setServerError('Demasiados intentos. Esperá unos minutos e intentá de nuevo.')
+        return
+      }
       setServerError('Ocurrió un error. Intentá de nuevo.')
     }
   }
@@ -75,7 +74,7 @@ export function LoginPage() {
             Bienvenido
           </h1>
           <p style={{ color: '#6b7280', fontSize: '0.9375rem' }}>
-            Ingresá a tu cuenta de revendedor
+            {mode === 'reseller' ? 'Ingresá a tu cuenta de revendedora' : 'Ingresá con tu cuenta de MBDA'}
           </p>
         </div>
 
@@ -125,11 +124,25 @@ export function LoginPage() {
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.9rem', color: '#6b7280' }}>
-          ¿No tenés cuenta?{' '}
-          <Link to="/registro" style={{ color: '#b8922a', fontWeight: 600, textDecoration: 'none' }}>
-            Registrate gratis
-          </Link>
+        {mode === 'reseller' ? (
+          <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.9rem', color: '#6b7280' }}>
+            ¿No tenés cuenta?{' '}
+            <Link to="/registro" style={{ color: '#b8922a', fontWeight: 600, textDecoration: 'none' }}>
+              Registrate gratis
+            </Link>
+          </p>
+        ) : null}
+
+        <p style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.8125rem', color: '#9ca3af' }}>
+          {mode === 'reseller' ? (
+            <button type="button" onClick={() => { setMode('admin'); setServerError(null) }} style={{ background: 'none', border: 'none', color: '#9ca3af', textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit', padding: 0 }}>
+              ¿Sos del equipo MBDA? Ingresá acá
+            </button>
+          ) : (
+            <button type="button" onClick={() => { setMode('reseller'); setServerError(null) }} style={{ background: 'none', border: 'none', color: '#9ca3af', textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit', padding: 0 }}>
+              ¿Sos revendedora? Ingresá acá
+            </button>
+          )}
         </p>
       </div>
     </div>

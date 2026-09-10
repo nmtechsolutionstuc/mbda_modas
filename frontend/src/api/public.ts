@@ -9,34 +9,48 @@ export interface PublicVariant {
   stock: number
 }
 
-export interface PublicProduct {
+// ── Tienda pública de una revendedora (/tienda/:slug) ─────────────────────────
+
+export type ResellerLevel = 'INICIAL' | 'BRONCE' | 'PLATA' | 'ORO'
+export type StoreTheme = 'ELEGANTE' | 'VARONIL' | 'NARANJA' | 'ROSA' | 'MINIMAL'
+
+export interface StoreProduct {
   catalogItemId: string
   productId: string
   name: string
   description: string | null
   photos: string[]
+  youtubeVideoUrl: string | null
   sellingPrice: number
   category: { id: string; name: string }
   variants: PublicVariant[]
-  // Dimensiones para cálculo de envío (null = usar default del admin)
-  weightGrams: number | null
-  dimH: number | null
-  dimW: number | null
-  dimL: number | null
 }
 
-export interface PublicReseller {
+export interface StoreReseller {
   id: string
   storeName: string
   storePhoto: string | null
+  storeBio: string | null
   referralCode: string
+  storeSlug: string
   whatsapp: string
+  city: string | null
+  level: ResellerLevel
+  storeTheme: StoreTheme
 }
 
-export interface PublicCatalog {
-  reseller: PublicReseller
-  products: PublicProduct[]
+export interface PublicStore {
+  reseller: StoreReseller
+  products: StoreProduct[]
   categories: { id: string; name: string }[]
+  payment: { cbu: string; alias: string }
+  outfitBuilderEnabled: boolean
+}
+
+export function getPublicStore(slug: string): Promise<PublicStore> {
+  return axiosClient
+    .get<{ success: true; data: PublicStore }>(`/public/tienda/${slug}`)
+    .then(r => r.data.data)
 }
 
 export interface PublicConfig {
@@ -45,13 +59,7 @@ export interface PublicConfig {
   whatsapp: string
   dispatchDays: number
   maxCashDeliveryDays: number
-  shippingEnabled: boolean
   helpUrl: string
-  // Defaults para envío cuando el producto no tiene medidas propias
-  defaultWeightGrams: number | null
-  defaultDimH: number | null
-  defaultDimW: number | null
-  defaultDimL: number | null
 }
 
 export interface LandingContent {
@@ -67,60 +75,28 @@ export interface LandingContent {
   landingStep2Desc: string
   landingStep3Title: string
   landingStep3Desc: string
-}
-
-export interface ZipnovaQuote {
-  /** Clave única por opción de envío: `${carrierId}_${serviceTypeCode}` */
-  quoteKey:        string
-  /** Valor usado para guardar en DB */
-  shippingMethod:  'CORREO_ARGENTINO' | 'ANDREANI' | 'OTHER_CARRIER'
-  carrierId:       number
-  carrierName:     string
-  /** Código Zipnova, ej: "standard_delivery", "pickup_point" */
-  serviceType:     string
-  /** Nombre legible, ej: "Entrega a domicilio", "Entrega en sucursal" */
-  serviceTypeName: string
-  logisticType:    string
-  cost:            number
-  estimatedDays:   { min: number; max: number } | null
-}
-
-export interface ShippingQuotesResponse {
-  quotes:   ZipnovaQuote[]
-  message?: string  // presente cuando la API falla (fallback)
-}
-
-export interface CreateOrderPayload {
-  refCode:           string
-  buyerName:         string
-  buyerWhatsapp:     string
-  buyerEmail?:       string
-  shippingMethod:    'CORREO_ARGENTINO' | 'ANDREANI' | 'LOCAL_PICKUP' | 'OTHER_CARRIER'
-  shippingAddress?:  string
-  shippingCity?:     string
-  shippingProvince?: string
-  shippingZip?:      string
-  shippingCost?:     number
-  shippingQuoteData?: string  // JSON del quote seleccionado
-  buyerNote?:        string   // Nota libre del comprador
-  items: { variantId: string; quantity: number }[]
-}
-
-export interface CreatedOrder {
-  order: {
-    id: string
-    orderNumber: string
-    buyerName: string
-    total: number
-    status: string
-    reservedUntil: string
-  }
-  payment: {
-    cbu: string
-    alias: string
-    whatsapp: string
-    dispatchDays: number
-  }
+  landingHeroImage: string | null
+  landingHeroVideo: string | null
+  landingAboutText: string
+  landingManifesto: string
+  landingFeaturesImage: string | null
+  landingStep1Video: string | null
+  landingStep2Video: string | null
+  landingStep3Video: string | null
+  landingBenefit1Title: string
+  landingBenefit1Desc: string
+  landingBenefit2Title: string
+  landingBenefit2Desc: string
+  landingBenefit3Title: string
+  landingBenefit3Desc: string
+  landingBenefit4Title: string
+  landingBenefit4Desc: string
+  landingShowBenefits: boolean
+  landingShowProcess: boolean
+  landingShowCollection: boolean
+  landingShowResellerStory: boolean
+  landingShowTestimonials: boolean
+  landingShowFaq: boolean
 }
 
 // ── Tipo auxiliar para respuestas envueltas del backend ───────────────────────
@@ -128,27 +104,54 @@ type ApiResponse<T> = { success: true; data: T }
 
 // ── API calls ─────────────────────────────────────────────────────────────────
 
-export function getPublicCatalog(refCode: string): Promise<PublicCatalog> {
-  return axiosClient
-    .get<ApiResponse<PublicCatalog>>(`/public/catalog/${refCode}`)
-    .then(r => r.data.data)
-}
-
 export function getPublicConfig(): Promise<PublicConfig> {
   return axiosClient
     .get<ApiResponse<PublicConfig>>('/public/config')
     .then(r => r.data.data)
 }
 
-export function createPublicOrder(payload: CreateOrderPayload): Promise<CreatedOrder> {
-  return axiosClient
-    .post<ApiResponse<CreatedOrder>>('/public/orders', payload)
-    .then(r => r.data.data)
-}
-
 export function getPublicLanding(): Promise<LandingContent> {
   return axiosClient
     .get<ApiResponse<LandingContent>>('/public/landing')
+    .then(r => r.data.data)
+}
+
+export interface FeaturedProduct {
+  id: string
+  name: string
+  basePrice: number
+  photos: string[]
+  category: { name: string }
+}
+
+export function getFeaturedProducts(): Promise<FeaturedProduct[]> {
+  return axiosClient
+    .get<ApiResponse<FeaturedProduct[]>>('/public/products/featured')
+    .then(r => r.data.data)
+}
+
+export interface PublicTestimonial {
+  id: string
+  quote: string
+  name: string
+  city: string
+}
+
+export function getPublicTestimonials(): Promise<PublicTestimonial[]> {
+  return axiosClient
+    .get<ApiResponse<PublicTestimonial[]>>('/public/testimonials')
+    .then(r => r.data.data)
+}
+
+export interface PublicFaqItem {
+  id: string
+  question: string
+  answer: string
+}
+
+export function getPublicFaq(): Promise<PublicFaqItem[]> {
+  return axiosClient
+    .get<ApiResponse<PublicFaqItem[]>>('/public/faq')
     .then(r => r.data.data)
 }
 
@@ -163,39 +166,20 @@ export function getPublicTerms(): Promise<PublicTerms> {
     .then(r => r.data.data)
 }
 
-// ── Feed "Prendas en Promo" ────────────────────────────────────────────────────
-
-export interface FeedItemMbda {
-  type: 'MBDA'
-  id: string
-  productId: string
-  name: string
-  price: number
-  photos: string[]
-  inStock: boolean
-}
-
-export interface FeedItemExternal {
-  type: 'EXTERNAL'
-  id: string
-  name: string
-  price: number
-  photos: string[]
-  storeName: string
-  whatsapp: string
-}
-
-export type FeedItem = FeedItemMbda | FeedItemExternal
-
-export interface PublicFeed {
-  enabled: boolean
-  sectionName: string
-  mbdaWhatsapp: string
-  items: FeedItem[]
-}
-
-export function getPublicFeed(): Promise<PublicFeed> {
+export function getPublicPrivacyPolicy(): Promise<PublicTerms> {
   return axiosClient
-    .get<ApiResponse<PublicFeed>>('/public/feed')
+    .get<ApiResponse<PublicTerms>>('/public/privacy')
+    .then(r => r.data.data)
+}
+
+export function getPublicChangePolicy(): Promise<PublicTerms> {
+  return axiosClient
+    .get<ApiResponse<PublicTerms>>('/public/change-policy')
+    .then(r => r.data.data)
+}
+
+export function getPublicWithdrawalRight(): Promise<PublicTerms> {
+  return axiosClient
+    .get<ApiResponse<PublicTerms>>('/public/withdrawal-right')
     .then(r => r.data.data)
 }

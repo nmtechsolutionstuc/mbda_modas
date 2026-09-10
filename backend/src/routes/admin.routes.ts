@@ -12,34 +12,42 @@ import {
   listCategoriesHandler,
   createCategoryHandler,
   updateCategoryHandler,
+  deleteCategoryHandler,
 } from '../controllers/admin.product.controller'
 import {
   getConfig,
   updateConfig,
   getConfigAudit,
   getDashboardStats,
+  updateLandingImage,
+  removeLandingImage,
+  getLevelConfigsHandler,
+  updateLevelConfigsHandler,
+  getBonusTiersHandler,
+  updateBonusTiersHandler,
+  listTestimonialsHandler, createTestimonialHandler, updateTestimonialHandler, deleteTestimonialHandler,
+  listFaqItemsHandler, createFaqItemHandler, updateFaqItemHandler, deleteFaqItemHandler,
 } from '../controllers/admin.config.controller'
 import {
-  getOrders, getOrderById, confirmOrderPayment,
+  getOrders, getOrderById, confirmOrderPayment, extendCashPickupAction,
   dispatchOrderAction, cancelOrderAction,
   markProofAction, rejectPaymentAction, cancelItemAction,
-  getShippingLabel,
   listCommissions, markCommissionPaid,
   getPendingPickupsHandler, markPickedUpAction,
 } from '../controllers/admin.order.controller'
 import {
   listResellers, deactivateReseller, createReseller, updateReseller, deleteReseller,
+  resetResellerPassword, getResellerAudit, approveReseller, rejectReseller,
 } from '../controllers/admin.reseller.controller'
 import {
-  listSubAdmins, createSubAdmin, toggleSubAdmin,
+  listSubAdmins, createSubAdmin, toggleSubAdmin, updateSubAdmin, deleteSubAdmin,
 } from '../controllers/admin.subadmin.controller'
 import {
-  listVouchersHandler, createVoucherHandler, updateVoucherHandler,
-  markVoucherUsedAction, cancelVoucherAction,
-} from '../controllers/admin.voucher.controller'
+  listCyclesHandler, getCycleHandler, createCycleHandler, updateCycleStatusHandler, updateCycleDatesHandler, getCycleShippingHandler,
+} from '../controllers/admin.cycle.controller'
 import {
-  listListingsHandler, approveListingAction, rejectListingAction, deleteListingAction,
-} from '../controllers/admin.listing.controller'
+  listCourseVideosHandler, createCourseVideoHandler, updateCourseVideoHandler, deleteCourseVideoHandler,
+} from '../controllers/admin.course.controller'
 
 const router = Router()
 
@@ -64,22 +72,45 @@ router.get('/products/:id/catalogs', adminOrSub, asyncHandler(getProductCatalogs
 router.get('/categories',        adminOrSub, asyncHandler(listCategoriesHandler))
 router.post('/categories',       adminOrSub, asyncHandler(createCategoryHandler))
 router.patch('/categories/:id',  adminOrSub, asyncHandler(updateCategoryHandler))
+router.delete('/categories/:id', adminOrSub, asyncHandler(deleteCategoryHandler))
 
 // ── Configuración (solo ADMIN) ────────────────────────────────────────────────
 router.get('/config',        adminOnly, asyncHandler(getConfig))
 router.patch('/config',      adminOnly, asyncHandler(updateConfig))
 router.get('/config/audit',  adminOnly, asyncHandler(getConfigAudit))
+router.patch('/config/landing-image', adminOnly, upload.single('heroImage'), asyncHandler(updateLandingImage))
+router.delete('/config/landing-image', adminOnly, asyncHandler(removeLandingImage))
+
+// ── Testimonios de la Home (solo ADMIN) ───────────────────────────────────────
+router.get('/testimonials',        adminOnly, asyncHandler(listTestimonialsHandler))
+router.post('/testimonials',       adminOnly, asyncHandler(createTestimonialHandler))
+router.patch('/testimonials/:id',  adminOnly, asyncHandler(updateTestimonialHandler))
+router.delete('/testimonials/:id', adminOnly, asyncHandler(deleteTestimonialHandler))
+
+// ── Preguntas frecuentes de la Home (solo ADMIN) ──────────────────────────────
+router.get('/faq',        adminOnly, asyncHandler(listFaqItemsHandler))
+router.post('/faq',       adminOnly, asyncHandler(createFaqItemHandler))
+router.patch('/faq/:id',  adminOnly, asyncHandler(updateFaqItemHandler))
+router.delete('/faq/:id', adminOnly, asyncHandler(deleteFaqItemHandler))
+
+// ── Niveles de revendedora (solo ADMIN) ───────────────────────────────────────
+router.get('/levels',   adminOnly, asyncHandler(getLevelConfigsHandler))
+router.patch('/levels', adminOnly, asyncHandler(updateLevelConfigsHandler))
+
+// ── Recompensa por volumen del ciclo (solo ADMIN) ─────────────────────────────
+router.get('/bonus-tiers',   adminOnly, asyncHandler(getBonusTiersHandler))
+router.patch('/bonus-tiers', adminOnly, asyncHandler(updateBonusTiersHandler))
 
 // ── Pedidos (solo ADMIN) ──────────────────────────────────────────────────────
 router.get('/orders',                           adminOnly, getOrders)
 router.get('/orders/:id',                       adminOnly, getOrderById)
 router.patch('/orders/:id/confirm',             adminOnly, confirmOrderPayment)
+router.patch('/orders/:id/extend-cash',         adminOnly, extendCashPickupAction)
 router.patch('/orders/:id/mark-proof',          adminOnly, markProofAction)
 router.patch('/orders/:id/reject',              adminOnly, rejectPaymentAction)
 router.patch('/orders/:id/dispatch',            adminOnly, dispatchOrderAction)
 router.patch('/orders/:id/cancel',              adminOnly, cancelOrderAction)
 router.patch('/orders/:id/items/:itemId/cancel', adminOnly, cancelItemAction)
-router.get('/orders/:id/label',                  adminOnly, getShippingLabel)
 
 // ── Retiros pendientes (ADMIN y SUBADMIN) ─────────────────────────────────────
 router.get('/pickups',                 adminOrSub, getPendingPickupsHandler)
@@ -94,24 +125,31 @@ router.get('/resellers',              adminOnly, listResellers)
 router.post('/resellers',             adminOnly, createReseller)
 router.patch('/resellers/:id',        adminOnly, updateReseller)
 router.patch('/resellers/:id/toggle', adminOnly, deactivateReseller)
+router.patch('/resellers/:id/approve', adminOnly, approveReseller)
+router.patch('/resellers/:id/reject', adminOnly, rejectReseller)
+router.patch('/resellers/:id/reset-password', adminOnly, resetResellerPassword)
+router.get('/resellers/:id/audit',    adminOnly, getResellerAudit)
 router.delete('/resellers/:id',       adminOnly, deleteReseller)
 
 // ── Subadmins (solo ADMIN) ────────────────────────────────────────────────────
 router.get('/subadmins',               adminOnly, listSubAdmins)
 router.post('/subadmins',              adminOnly, createSubAdmin)
 router.patch('/subadmins/:id/toggle',  adminOnly, toggleSubAdmin)
+router.patch('/subadmins/:id',         adminOnly, updateSubAdmin)
+router.delete('/subadmins/:id',        adminOnly, deleteSubAdmin)
 
-// ── Vales de cambio (solo ADMIN) ──────────────────────────────────────────────
-router.get('/vouchers',              adminOnly, listVouchersHandler)
-router.post('/vouchers',             adminOnly, createVoucherHandler)
-router.patch('/vouchers/:id',        adminOnly, updateVoucherHandler)
-router.patch('/vouchers/:id/use',    adminOnly, markVoucherUsedAction)
-router.patch('/vouchers/:id/cancel', adminOnly, cancelVoucherAction)
+// ── Ciclos de compra (ADMIN y SUBADMIN) ───────────────────────────────────────
+router.get('/cycles',              adminOrSub, listCyclesHandler)
+router.get('/cycles/:id',          adminOrSub, getCycleHandler)
+router.get('/cycles/:id/shipping', adminOrSub, getCycleShippingHandler)
+router.post('/cycles',             adminOnly,  createCycleHandler)
+router.patch('/cycles/:id',        adminOnly,  updateCycleDatesHandler)
+router.patch('/cycles/:id/status', adminOnly,  updateCycleStatusHandler)
 
-// ── Moderación de prendas externas del feed (ADMIN y SUBADMIN) ───────────────
-router.get('/listings',              adminOrSub, listListingsHandler)
-router.patch('/listings/:id/approve', adminOrSub, approveListingAction)
-router.patch('/listings/:id/reject',  adminOrSub, rejectListingAction)
-router.delete('/listings/:id',        adminOrSub, deleteListingAction)
+// ── Cursos para revendedoras (ADMIN y SUBADMIN) ───────────────────────────────
+router.get('/courses',        adminOrSub, asyncHandler(listCourseVideosHandler))
+router.post('/courses',       adminOrSub, asyncHandler(createCourseVideoHandler))
+router.patch('/courses/:id',  adminOrSub, asyncHandler(updateCourseVideoHandler))
+router.delete('/courses/:id', adminOrSub, asyncHandler(deleteCourseVideoHandler))
 
 export default router

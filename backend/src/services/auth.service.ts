@@ -36,6 +36,56 @@ export async function generateReferralCode(): Promise<string> {
   }
 }
 
+// ── Store slug ────────────────────────────────────────────────────────────────
+
+/**
+ * Genera un slug único para la tienda pública (/tienda/:slug) a partir del nombre
+ * de la tienda. Si hay colisión, agrega un sufijo numérico incremental.
+ */
+const ACCENT_MAP: Record<string, string> = {
+  á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u', ñ: 'n',
+  Á: 'a', É: 'e', Í: 'i', Ó: 'o', Ú: 'u', Ü: 'u', Ñ: 'n',
+}
+
+export async function generateStoreSlug(storeName: string): Promise<string> {
+  const withoutAccents = storeName.replace(/[áéíóúüñÁÉÍÓÚÜÑ]/g, ch => ACCENT_MAP[ch] ?? ch)
+  const base = withoutAccents
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-') || 'tienda'
+
+  let slug = base
+  let suffix = 1
+  while (await prisma.reseller.findUnique({ where: { storeSlug: slug } })) {
+    suffix += 1
+    slug = `${base}-${suffix}`
+  }
+  return slug
+}
+
+// ── Límite de revendedoras por ciudad ──────────────────────────────────────────
+
+/**
+ * Si el admin activó el límite de revendedoras por ciudad, valida que la ciudad
+ * indicada todavía tenga cupo antes de crear una cuenta nueva. No hace nada si
+ * el límite está desactivado (comportamiento por defecto).
+ */
+export async function assertCityHasCapacity(city: string): Promise<void> {
+  const config = await prisma.config.findFirst()
+  if (!config?.cityResellerLimitEnabled) return
+
+  const count = await prisma.reseller.count({
+    where: { city: { equals: city, mode: 'insensitive' }, isActive: true },
+  })
+  if (count >= config.cityResellerLimitCount) {
+    throw Object.assign(
+      new Error(`Ya se alcanzó el máximo de revendedoras para ${city} (${config.cityResellerLimitCount}). Contactá a MBDA para más información.`),
+      { status: 409 },
+    )
+  }
+}
+
 // ── Session tokens ────────────────────────────────────────────────────────────
 
 /**

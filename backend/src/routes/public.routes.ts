@@ -1,19 +1,21 @@
 import { Router } from 'express'
 import {
-  getPublicCatalog, getPublicProduct,
-  createOrder, getPublicConfig, getLandingContent, getPublicTerms,
-  getShippingCost, getPublicFeed,
+  getPublicStore, getPublicConfig, getLandingContent, getPublicTerms,
+  getPublicPrivacyPolicy, getPublicChangePolicy, getPublicWithdrawalRight,
+  getFeaturedProducts, getPublicTestimonials, getPublicFaq,
 } from '../controllers/public.controller'
 
 const router = Router()
 
-router.get('/catalog/:refCode',              getPublicCatalog)
-router.get('/catalog/:refCode/:productId',   getPublicProduct)
-router.post('/orders',                       createOrder)
+router.get('/products/featured',             getFeaturedProducts)
+router.get('/testimonials',                  getPublicTestimonials)
+router.get('/faq',                           getPublicFaq)
+router.get('/tienda/:slug',                  getPublicStore)
 router.get('/config',                        getPublicConfig)
 router.get('/landing',                       getLandingContent)
 router.get('/terms',                         getPublicTerms)
-router.get('/shipping/calculate',            getShippingCost)
-router.get('/feed',                          getPublicFeed)
+router.get('/privacy',                       getPublicPrivacyPolicy)
+router.get('/change-policy',                 getPublicChangePolicy)
+router.get('/withdrawal-right',              getPublicWithdrawalRight)
 
 export default router

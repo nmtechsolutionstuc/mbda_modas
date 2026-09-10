@@ -28,6 +28,7 @@ export async function getResellerCatalog(resellerId: string) {
       id: item.id,
       sellingPrice: item.sellingPrice,
       saleMode: item.saleMode,
+      visible: item.visible,
       ganancia,
       createdAt: item.createdAt,
       product: {
@@ -43,6 +44,45 @@ export async function getResellerCatalog(resellerId: string) {
       },
     }
   })
+}
+
+/** Un ítem puntual del catálogo del revendedor, para la pantalla "Configurar producto" */
+export async function getResellerCatalogItem(resellerId: string, itemId: string) {
+  const item = await prisma.catalogItem.findFirst({
+    where: { id: itemId, resellerId },
+    include: {
+      product: {
+        include: {
+          category: { select: { id: true, name: true } },
+          variants: { select: { id: true, size: true, color: true, stock: true } },
+        },
+      },
+    },
+  })
+  if (!item) throw Object.assign(new Error('Ítem no encontrado'), { status: 404 })
+
+  const ganancia = calcularComision(
+    Number(item.sellingPrice),
+    Number(item.product.basePrice),
+    Number(item.product.commissionPct),
+  )
+  return {
+    id: item.id,
+    sellingPrice: item.sellingPrice,
+    saleMode: item.saleMode,
+    visible: item.visible,
+    ganancia,
+    product: {
+      id: item.product.id,
+      name: item.product.name,
+      description: item.product.description,
+      basePrice: item.product.basePrice,
+      commissionPct: item.product.commissionPct,
+      photos: item.product.photos,
+      category: item.product.category,
+      variants: item.product.variants,
+    },
+  }
 }
 
 /** Todos los productos activos de MBDA con flag inCatalog */
@@ -127,6 +167,10 @@ export async function addProductToCatalog(
     )
   }
 
+  // Nota: el tope de aumento por nivel de revendedora (LevelConfig.maxMarkupPct)
+  // existe en el modelo de datos pero no se aplica todavía — no hay límite de
+  // precio propio por ahora, más allá del mínimo del precio oficial.
+
   // Verificar si ya está en el catálogo en ese modo
   const existing = await prisma.catalogItem.findUnique({
     where: { resellerId_productId_saleMode: { resellerId, productId, saleMode } },
@@ -149,31 +193,41 @@ export async function addProductToCatalog(
   return { ...item, ganancia }
 }
 
-/** Actualiza el precio de venta de un ítem del catálogo (solo disponible en modo online) */
-export async function updateCatalogItemPrice(resellerId: string, itemId: string, sellingPrice: number) {
+/** Actualiza el precio y/o la visibilidad de un ítem del catálogo (precio solo en modo online) */
+export async function updateCatalogItem(
+  resellerId: string,
+  itemId: string,
+  data: { sellingPrice?: number; visible?: boolean },
+) {
   const item = await prisma.catalogItem.findFirst({
     where: { id: itemId, resellerId },
     include: { product: true },
   })
   if (!item) throw Object.assign(new Error('Ítem no encontrado'), { status: 404 })
 
-  if (item.saleMode === 'PRESENCIAL') {
-    throw Object.assign(
-      new Error('En modo presencial el precio es el precio fijo del local y no se puede modificar'),
-      { status: 400 },
-    )
-  }
+  if (data.sellingPrice !== undefined) {
+    if (item.saleMode === 'PRESENCIAL') {
+      throw Object.assign(
+        new Error('En modo presencial el precio es el precio fijo del local y no se puede modificar'),
+        { status: 400 },
+      )
+    }
 
-  if (sellingPrice < Number(item.product.basePrice)) {
-    throw Object.assign(
-      new Error('El precio de venta no puede ser menor al precio base'),
-      { status: 400 },
-    )
+    if (data.sellingPrice < Number(item.product.basePrice)) {
+      throw Object.assign(
+        new Error('El precio de venta no puede ser menor al precio base'),
+        { status: 400 },
+      )
+    }
+
   }
 
   const updated = await prisma.catalogItem.update({
     where: { id: itemId },
-    data: { sellingPrice },
+    data: {
+      ...(data.sellingPrice !== undefined && { sellingPrice: data.sellingPrice }),
+      ...(data.visible !== undefined && { visible: data.visible }),
+    },
     include: {
       product: {
         include: {
@@ -184,7 +238,7 @@ export async function updateCatalogItemPrice(resellerId: string, itemId: string,
     },
   })
 
-  const ganancia = calcularComision(sellingPrice, Number(item.product.basePrice), Number(item.product.commissionPct))
+  const ganancia = calcularComision(Number(updated.sellingPrice), Number(item.product.basePrice), Number(item.product.commissionPct))
   return { ...updated, ganancia }
 }
 

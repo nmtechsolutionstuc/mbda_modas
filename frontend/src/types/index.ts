@@ -1,5 +1,7 @@
 // ── Auth / User types ─────────────────────────────────────────────────────────
 
+export type StoreTheme = 'ELEGANTE' | 'VARONIL' | 'NARANJA' | 'ROSA' | 'MINIMAL'
+
 export interface AdminUser {
   id: string
   email: string
@@ -19,14 +21,22 @@ export interface ResellerUser {
   email: string
   firstName: string
   lastName: string
+  dni: string | null
   storeName: string
+  storeSlug: string
   storePhoto: string | null
+  storeBio: string | null
   whatsapp: string
   cbu: string | null
   alias: string | null
+  address: string | null
+  city: string | null
+  postalCode: string | null
+  deliveryMethod: 'PICKUP' | 'SHIPPING'
   referralCode: string
   isActive: boolean
   onboardingSeenAt: string | null
+  storeTheme: StoreTheme
   role: 'RESELLER'
 }
 
