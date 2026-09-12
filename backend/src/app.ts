@@ -8,6 +8,12 @@ import { env } from './config/env'
 
 const app = express()
 
+// Render pone su propio balanceador delante de esta app — sin esto, Express
+// no confía en el header X-Forwarded-For y express-rate-limit no puede
+// resolver la IP real del visitante (ver rateLimiter.ts, que igual usa
+// CF-Connecting-IP como fuente principal por los saltos extra de Cloudflare).
+app.set('trust proxy', 1)
+
 // ── Seguridad ─────────────────────────────────────────────────────────────────
 app.use(
   helmet({

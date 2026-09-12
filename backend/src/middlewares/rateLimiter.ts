@@ -11,6 +11,17 @@ function rateLimitHandler(_req: any, res: any) {
   })
 }
 
+// El tráfico llega pasando por la Cloudflare Pages Function (proxy del
+// frontend) y luego por el balanceador de Render antes de tocar esta app —
+// sin esto, `req.ip` resuelve siempre a la IP de ese último salto (la misma
+// para TODOS los visitantes), y el rate limit termina compartido entre
+// cualquiera que use el sitio en vez de contar por usuario real. Cloudflare
+// siempre agrega `CF-Connecting-IP` con la IP real del visitante, así que la
+// usamos como key en vez de confiar en la cadena de X-Forwarded-For.
+function keyGenerator(req: any): string {
+  return (req.headers['cf-connecting-ip'] as string) || req.ip
+}
+
 /**
  * Auth: 8 intentos por IP cada 15 minutos.
  * Protege login contra ataques de fuerza bruta por IP.
@@ -20,6 +31,7 @@ export const authLimiter = rateLimit({
   max: 8,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator,
   handler: rateLimitHandler,
 })
 
@@ -33,6 +45,7 @@ export const reservationLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator,
   handler: rateLimitHandler,
 })
 
@@ -45,6 +58,7 @@ export const generalApiLimiter = rateLimit({
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator,
   handler: rateLimitHandler,
 })
 
@@ -57,5 +71,6 @@ export const publicStoreLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator,
   handler: rateLimitHandler,
 })
