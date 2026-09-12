@@ -1,11 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+  schemas   = ["mbda"]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -16,6 +18,8 @@ enum ProductKind {
   PHYSICAL
   SERVICE
   DIGITAL
+
+  @@schema("mbda")
 }
 
 enum OrderStatus {
@@ -24,27 +28,37 @@ enum OrderStatus {
   CONFIRMED
   DISPATCHED
   CANCELLED
+
+  @@schema("mbda")
 }
 
 enum SaleMode {
   PRESENCIAL
   ONLINE
+
+  @@schema("mbda")
 }
 
 enum PickupBy {
   BUYER
   RESELLER
+
+  @@schema("mbda")
 }
 
 enum PaymentMethod {
   TRANSFER
   CASH
+
+  @@schema("mbda")
 }
 
 enum CommissionStatus {
   PENDING
   PAID
   CANCELLED
+
+  @@schema("mbda")
 }
 
 // SALE = comisión normal de la venta. BONUS = extra que MBDA suma de su propio
@@ -53,11 +67,15 @@ enum CommissionStatus {
 enum CommissionKind {
   SALE
   BONUS
+
+  @@schema("mbda")
 }
 
 enum AdminRole {
   ADMIN
   SUBADMIN
+
+  @@schema("mbda")
 }
 
 enum ResellerLevel {
@@ -65,6 +83,8 @@ enum ResellerLevel {
   BRONCE
   PLATA
   ORO
+
+  @@schema("mbda")
 }
 
 enum CycleStatus {
@@ -72,6 +92,8 @@ enum CycleStatus {
   CLOSED
   PREPARING
   DISPATCHED
+
+  @@schema("mbda")
 }
 
 enum StoreTheme {
@@ -80,12 +102,16 @@ enum StoreTheme {
   NARANJA
   ROSA
   MINIMAL
+
+  @@schema("mbda")
 }
 
 enum ApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+
+  @@schema("mbda")
 }
 
 // Cómo recibe la revendedora la mercadería del ciclo cerrado. Solo aplica
@@ -94,6 +120,8 @@ enum ApprovalStatus {
 enum DeliveryMethod {
   PICKUP
   SHIPPING
+
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -111,6 +139,7 @@ model Admin {
   updatedAt    DateTime  @updatedAt
 
   @@map("admins")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -159,6 +188,7 @@ model Reseller {
   @@index([referralCode])
   @@index([storeSlug])
   @@map("resellers")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -175,6 +205,7 @@ model LevelConfig {
   updatedAt       DateTime      @updatedAt
 
   @@map("level_configs")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -192,6 +223,7 @@ model RefreshToken {
 
   @@index([resellerId])
   @@map("refresh_tokens")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -209,6 +241,7 @@ model Category {
   products Product[]
 
   @@map("categories")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -238,6 +271,7 @@ model Product {
   @@index([categoryId])
   @@index([isActive])
   @@map("products")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -259,6 +293,7 @@ model ProductVariant {
   @@unique([productId, size, color])
   @@index([productId])
   @@map("product_variants")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -281,6 +316,7 @@ model CatalogItem {
   @@index([resellerId])
   @@index([productId])
   @@map("catalog_items")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -300,6 +336,7 @@ model Cycle {
   orders Order[]
 
   @@map("cycles")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -337,6 +374,7 @@ model Order {
   @@index([status])
   @@index([cycleId])
   @@map("orders")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -364,6 +402,7 @@ model OrderItem {
   @@index([orderId])
   @@index([variantId])
   @@map("order_items")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -386,6 +425,7 @@ model Commission {
   @@index([resellerId])
   @@index([orderId])
   @@map("commissions")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -406,6 +446,7 @@ model CycleBonusTier {
   updatedAt       DateTime @updatedAt
 
   @@map("cycle_bonus_tiers")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -424,6 +465,7 @@ model ConfigAuditLog {
 
   @@index([field])
   @@map("config_audit_logs")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -447,6 +489,7 @@ model ResellerAuditLog {
   @@index([resellerId])
   @@index([field])
   @@map("reseller_audit_logs")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -466,6 +509,7 @@ model CourseVideo {
   updatedAt   DateTime @updatedAt
 
   @@map("course_videos")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -545,6 +589,7 @@ model Config {
   updatedAt DateTime @updatedAt
 
   @@map("config")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -563,6 +608,7 @@ model Testimonial {
   updatedAt DateTime @updatedAt
 
   @@map("testimonials")
+  @@schema("mbda")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -579,4 +625,5 @@ model FaqItem {
   updatedAt DateTime @updatedAt
 
   @@map("faq_items")
+  @@schema("mbda")
 }

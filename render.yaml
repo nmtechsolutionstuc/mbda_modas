@@ -5,7 +5,7 @@ services:
     rootDir: backend
     plan: free # cambiar a "starter" ($7/mes) para que no duerma tras 15 min de inactividad
     healthCheckPath: /health
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_ENV

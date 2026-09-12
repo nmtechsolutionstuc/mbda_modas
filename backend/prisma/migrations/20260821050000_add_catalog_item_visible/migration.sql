@@ -1,1 +1,0 @@
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "visible" BOOLEAN NOT NULL DEFAULT true;

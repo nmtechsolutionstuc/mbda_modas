@@ -35,3 +35,6 @@ Thumbs.db
 
 # ── Uploads locales ───────────────────────────────────────────
 backend/public/uploads/
+
+# ── Backup local de migraciones viejas (schema public, no usar) ──
+backend/prisma/migrations_old_public_schema_DO_NOT_USE/
