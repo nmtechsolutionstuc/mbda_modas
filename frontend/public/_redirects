@@ -1,3 +1,1 @@
-/api/*      https://mbda-revendedores-backend.onrender.com/api/:splat      200
-/uploads/*  https://mbda-revendedores-backend.onrender.com/uploads/:splat  200
-/*          /index.html  200
+/*  /index.html  200
